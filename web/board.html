@@ -1,0 +1,1505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>BagBoard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #14110f; --panel: #1d1916; --panel2: #262019; --line: #3a3027; --text: #e9e1d3; --muted: #9a8f7e;
+    --gold: #f0c05a; --accent: #c8963c; --good: #7ecf6a; --warn: #f0c05a; --bad: #e0685a; --info: #6fb3e0;
+    --q0: #9d9d9d; --q1: #ffffff; --q2: #1eff00; --q3: #3d9bff; --q4: #c77dff; --q5: #ff8000;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.4 -apple-system, "Helvetica Neue", "Segoe UI", sans-serif; }
+  a { color: inherit; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  header { position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line);
+    padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+  h1 { font-size: 17px; margin: 0; color: var(--gold); letter-spacing: .02em; font-weight: 650; }
+  .stat { color: var(--muted); white-space: nowrap; }
+  img.coin { width: 13px; height: 13px; margin-left: 2px; vertical-align: -2px; }
+  .stat b { color: var(--text); font-weight: 600; }
+  .spacer { flex: 1; }
+  button, select, input[type=text], input[type=search] { font: inherit; color: var(--text); background: var(--panel2);
+    border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #1a1408; font-weight: 600; }
+  button:focus-visible, select:focus-visible, input:focus-visible, th:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+  #notice { margin: 10px 16px 0; padding: 9px 14px; background: var(--panel2); border: 1px solid var(--gold); border-radius: 8px; display: flex; gap: 14px; align-items: center; }
+  #notice.hidden { display: none; } #notice span { flex: 1; }
+  #status .olddata { color: var(--warn); }
+  #status { cursor: help; padding: 6px; } #status .dot { margin-right: 6px; }
+  .dot.live { background: var(--good); } .dot.stale { background: var(--warn); }
+  #bar { padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; border-bottom: 1px solid var(--line); }
+  #bar input[type=search] { width: 220px; }
+  .chip { border-radius: 999px; padding: 4px 11px; }
+  .chip[aria-pressed=true] { background: var(--accent); border-color: var(--accent); color: #1a1408; font-weight: 600; }
+  .chip small { opacity: .75; margin-left: 4px; }
+  #questfilter { position: relative; margin-left: auto; }     /* at the right end of the bar */
+  /* One row. The groups are placed over their columns by placeColTools(); on a window too narrow for that
+     (class "wrapped") they simply follow each other and the bar wraps. */
+  #bar { position: relative; }
+  #bar:not(.wrapped) { flex-wrap: nowrap; }
+  #bar .group { display: flex; gap: 8px; align-items: center; white-space: nowrap; }
+  #bar:not(.wrapped) .group { position: absolute; top: 50%; transform: translateY(-50%); left: 0; }
+  #bar:not(.wrapped) #chips { white-space: nowrap; }
+  #questfilter summary { list-style: none; cursor: pointer; border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; background: var(--panel2); white-space: nowrap; }
+  #questfilter summary::-webkit-details-marker { display: none; }
+  #questfilter summary::after { content: " ▾"; color: var(--muted); }
+  #questfilter summary:hover, #questfilter[open] summary { border-color: var(--accent); }
+  #questfilter summary:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+  #questfilter .menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: grid; gap: 8px; white-space: nowrap; box-shadow: 0 6px 20px rgba(0, 0, 0, .5); }
+  #questfilter .menu label.check { color: var(--text); }
+  #questfilter-count { color: var(--gold); font-weight: 600; }
+  label.check { color: var(--muted); display: inline-flex; gap: 5px; align-items: center; }
+  main { padding: 0 16px 60px; }
+  .tablewrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 980px; }
+  th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em;
+    padding: 10px 8px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; position: sticky; top: 0; background: var(--bg); }
+  th[data-sort] { cursor: pointer; } th[data-sort]:hover { color: var(--text); }
+  th[aria-sort=ascending], th[aria-sort=descending] { color: var(--gold); box-shadow: inset 0 -2px var(--gold); }
+  td { padding: 7px 8px; border-bottom: 1px solid #2a231d; vertical-align: top; }
+  tr:hover td { background: #1a1613; }
+  th.icon { width: 1%; padding-left: 4px; }
+  th.prof, td.prof { width: 50px; min-width: 50px; max-width: 50px; box-sizing: border-box; text-align: center; padding-left: 2px; padding-right: 2px; }
+  td.prof button.profcell { width: 44px; min-width: 0; padding-left: 0; padding-right: 0; }
+  th.prof img { width: 20px; height: 20px; border-radius: 4px; vertical-align: -5px; }
+  button.profcell { font-size: 12px; padding: 2px 6px; min-width: 38px; font-variant-numeric: tabular-nums; }
+  th.icon svg.questmark { fill: #ffd100; stroke: #7a5a00; stroke-width: .8; width: 19px; height: 19px; }
+  th.bindcol, td.bindcol { text-align: center; padding-left: 4px; padding-right: 4px; }
+  td.bindcol svg { width: 16px; height: 16px; fill: none; stroke: var(--gold); stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; vertical-align: -3px; }
+  td.bindcol svg.later { stroke: var(--muted); stroke-dasharray: 2 2.2; }
+  td.lvl.toolow { color: #f0705f; }
+  th.questcol, td.questcol { width: 1%; text-align: center; padding-left: 3px; padding-right: 3px; }
+  button.profcell.hiddenquests { border-style: dotted; min-width: 0; }
+  button.profcell.unknownquest { border-style: dotted; }
+  #quests-links a, #recipes-links a { margin-right: 14px; font-size: 13px; }
+  button.profcell.inlog { font-weight: 700; border-width: 2px; }
+  button.profcell.struck { border-style: dashed; text-decoration: line-through; }
+  button.profcell.nobody { color: var(--muted); }
+  #profchar.other { border-color: var(--accent); color: var(--accent); }
+  button.profcell.indirect { background: transparent; opacity: .7; letter-spacing: -.3px; }
+  button.profcell .arrow { display: inline-block; text-decoration: none; margin-right: 1px; }
+  /* behind the number: a recipe one step on gives a better colour than the direct ones, shown in that colour */
+  button.profcell .arrow.chain { margin: 0 0 0 1px; font-weight: 700; }
+  button.profcell .chain.Optimal { color: #ff9a66; } button.profcell .chain.Medium { color: #e6da6a; } button.profcell .chain.Easy { color: #7ecf6a; }   /* inline-block keeps the strike-through off the arrow */
+  button.use.step { cursor: pointer; display: inline-flex; align-items: center; gap: 5px; padding: 2px 7px 2px 3px; }
+  button.use.step img { width: 18px; height: 18px; border-radius: 3px; display: block; }
+  #recipes-indirect-label { margin-right: auto; align-self: center; }
+  .onward a, tr.via a, a.recipelink { color: var(--info); }
+  /* "used by" and the profession icons stay on one line. The line takes no width of its own, so it runs on
+     past the recipe column, under the numbers, without making that column wider. */
+  .onward { display: flex; flex-wrap: nowrap; align-items: center; gap: 4px; margin-top: 3px; width: 0; white-space: nowrap; }
+  .onward > * { flex: none; }
+  tr.via td { color: var(--muted); font-size: 12px; padding-top: 14px; padding-bottom: 2px; border-bottom: 0; }
+  dialog.wide { width: 760px; }
+  dialog table { min-width: 0; } dialog th { background: var(--panel); position: static; }
+  dialog .scroll { max-height: 60vh; overflow: auto; }
+  th.icon svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; vertical-align: -4px; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .name { font-weight: 600; }
+  .q0 { color: var(--q0); } .q1 { color: var(--q1); } .q2 { color: var(--q2); } .q3 { color: var(--q3); } .q4 { color: var(--q4); } .q5 { color: var(--q5); }
+  .sub { color: var(--muted); font-size: 12px; }
+  .uses { display: flex; flex-wrap: wrap; gap: 4px; max-width: 520px; }
+  .use { font-size: 12px; padding: 2px 7px; border-radius: 5px; background: var(--panel2); border: 1px solid var(--line); white-space: nowrap; }
+  .use.log { border-color: var(--good); color: var(--good); }
+  .use.open { border-color: var(--info); color: var(--info); }
+  .use.done, .use.other { color: var(--muted); text-decoration: line-through; }
+  .use.Optimal { border-color: #ff8040; color: #ff9a66; } .use.Medium { border-color: #d8c93c; color: #e6da6a; }
+  .use.Hard { border-color: #e04a3a; color: #f0705f; }
+  .use.Easy { border-color: #40bf40; color: #7ecf6a; } .use.Trivial { color: var(--muted); }
+  .use.summary { font-weight: 600; }
+  .use.unlearned { border-style: dashed; color: var(--muted); }
+  .use.flag { color: var(--muted); }
+  .none { color: var(--muted); font-style: italic; font-size: 12px; }
+  td select { width: 142px; } td input[type=text] { width: 100%; min-width: 170px; }
+  .decide { display: flex; gap: 4px; }
+  .decide button { width: 32px; height: 30px; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); }
+  .decide button:hover { color: var(--text); }
+  .decide svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  .decide button[aria-pressed=true] { color: #1a1408; }
+  .decide button[data-dec=keep][aria-pressed=true] { background: var(--good); border-color: var(--good); }
+  .decide button[data-dec=forever][aria-pressed=true] { background: var(--muted); border-color: var(--muted); }
+  .decide button[data-dec=auction][aria-pressed=true] { background: var(--gold); border-color: var(--gold); }
+  .decide button[data-dec=toss][aria-pressed=true] { background: var(--bad); border-color: var(--bad); }
+  .decide button[data-dec=twink][aria-pressed=true] { background: var(--info); border-color: var(--info); }
+  tr.d-twink select { border-color: var(--info); }
+  td select[data-role=twink] { display: block; margin-top: 4px; }
+  .links a { color: var(--info); font-size: 12px; margin-right: 8px; white-space: nowrap; }
+  #welcome { max-width: 720px; margin: 40px auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 22px 26px; }
+  #welcome h2 { margin: 0 0 8px; color: var(--gold); font-size: 18px; }
+  #welcome ol { padding-left: 20px; } #welcome li { margin: 8px 0; }
+  code { background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; font-size: 12.5px; word-break: break-all; }
+  #msg { color: var(--bad); padding: 6px 16px; }
+  dialog { width: 600px; max-width: calc(100vw - 40px); background: var(--panel); color: var(--text); border: 1px solid var(--gold); border-radius: 10px; padding: 20px 24px; }
+  #shade { position: fixed; inset: 0; background: rgba(0, 0, 0, .6); z-index: 1000; }
+  dialog.wide[open] { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); margin: 0; z-index: 1001; max-height: calc(100vh - 40px); }
+  dialog h3 { margin: 16px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  #set-sources { list-style: none; margin: 0; padding: 0; }
+  #set-sources li { display: flex; gap: 12px; padding: 5px 0; border-bottom: 1px solid var(--line); }
+  #set-sources li > span { width: 120px; flex: none; color: var(--muted); }
+  #set-sources li.bad b { color: var(--bad); }
+  #settings-open.problem { border-color: var(--bad); }
+  #settings-open.problem::after { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--bad); margin-left: 7px; }
+  dialog::backdrop { background: rgba(0, 0, 0, .6); }
+  dialog h2 { margin: 0 0 10px; color: var(--gold); font-size: 18px; }
+  dialog p { margin: 0 0 10px; }
+  dialog label { display: block; margin: 14px 0 4px; font-weight: 600; }
+  dialog input[type=text] { width: 100%; }
+  dialog .hint { color: var(--muted); font-size: 12px; margin: 4px 0 0; word-break: break-all; }
+  dialog .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+  #set-error { color: var(--bad); margin: 12px 0 0; }
+  #skills { padding: 8px 16px 0; color: var(--muted); font-size: 12.5px; display: flex; flex-wrap: wrap; gap: 4px 16px; }
+  #s-skills { display: inline-flex; gap: 12px; flex-wrap: wrap; }
+  #s-skills .skill { display: inline-flex; align-items: center; gap: 5px; }
+  #s-skills img { width: 18px; height: 18px; border-radius: 4px; }
+  #skills b { color: var(--text); font-weight: 600; }
+  #drop { position: fixed; inset: 0; background: rgba(200,150,60,.18); border: 3px dashed var(--accent); display: none; z-index: 20; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>BagBoard</h1>
+  <select id="char" class="hidden" aria-label="Character"></select>
+  <span class="stat hidden" id="s-money"></span>
+  <span class="stat hidden" id="s-slots"></span>
+  <span class="spacer"></span>
+  <span class="stat hidden" id="s-skills"></span>
+  <span class="spacer"></span>
+  <span class="stat" id="status" title="Not connected."><span class="dot"></span></span>
+  <button id="connect" class="primary">Connect file</button>
+  <button id="settings-open" title="Where the game and the addon's data file are">Settings</button>
+</header>
+
+<div id="msg" class="hidden" role="alert"></div>
+<div id="notice" class="hidden" role="status"><span id="notice-text"></span><button id="notice-ok">Got it</button></div>
+<dialog id="install" aria-labelledby="install-title">
+  <h2 id="install-title"></h2>
+  <p id="install-text"></p>
+  <code id="install-path"></code>
+  <div class="actions"><button id="install-change">Change location</button><button id="install-later">Not now</button><button id="install-go" class="primary" autofocus>OK</button></div>
+</dialog>
+<div id="shade" hidden></div>
+<dialog id="recipes" class="wide" aria-labelledby="recipes-title">
+  <h2 id="recipes-title"></h2>
+  <p class="hint" id="recipes-sub"></p>
+  <p class="links" id="recipes-links"></p>
+  <div class="scroll"><table>
+    <thead><tr><th>Recipe</th><th class="num">Needs</th><th class="num">Yellow</th><th class="num">Green</th><th class="num">Grey</th><th>For your characters</th></tr></thead>
+    <tbody id="recipes-rows"></tbody>
+  </table></div>
+  <div class="actions"><label class="check" id="recipes-indirect-label" title="Also list recipes one step on: what this item is made into, and who uses that. On each time the dialog opens; unticking it counts for this dialog only and does not change the board."><input type="checkbox" id="recipes-indirect"> Indirect uses</label><button id="recipes-back" hidden>Back</button><button id="recipes-close" class="primary" autofocus>Close</button></div>
+</dialog>
+<dialog id="quests" class="wide" aria-labelledby="quests-title">
+  <h2 id="quests-title"></h2>
+  <p class="hint" id="quests-sub"></p>
+  <p id="quests-none" hidden>The game marks this as a quest item, but the quest data has no quest for it.</p>
+  <p class="links" id="quests-links"></p>
+  <div class="scroll" id="quests-table"><table>
+    <thead><tr><th>Quest</th><th class="num">Level</th><th class="num">Needs</th><th>State</th><th>Notes</th></tr></thead>
+    <tbody id="quests-rows"></tbody>
+  </table></div>
+  <div class="actions"><button id="quests-close" class="primary" autofocus>Close</button></div>
+</dialog>
+<dialog id="settings" aria-labelledby="settings-title">
+  <h2 id="settings-title">Settings</h2>
+  <h3>Data sources</h3>
+  <ul id="set-sources"></ul>
+  <div id="set-locations">
+  <h3>Locations</h3>
+  <label for="set-game">WoW Forever folder</label>
+  <input type="text" id="set-game" spellcheck="false" autocomplete="off">
+  <p class="hint" id="set-game-hint"></p>
+  <label for="set-saved">Addon data file (BagBoard.lua)</label>
+  <input type="text" id="set-saved" spellcheck="false" autocomplete="off" placeholder="Automatic: the newest one in the WoW Forever folder">
+  <p class="hint" id="set-saved-hint"></p>
+  </div>
+  <p id="set-error" class="hidden" role="alert"></p>
+  <div class="actions"><button id="set-cancel">Cancel</button><button id="set-save" class="primary">Save</button></div>
+</dialog>
+
+<section id="welcome">
+  <h2>Connect your BagBoard file</h2>
+  <ol>
+    <li>In game, click the <b>BagBoard</b> button or type <code>/bb sync</code>. The game reloads and writes the file.</li>
+    <li>Here, click <b>Connect file</b> and pick<br>
+      <code id="path">/Applications/World of Warcraft/_forever_/WTF/Account/YOUR-ACCOUNT/SavedVariables/BagBoard.lua</code>
+      <button id="copy">Copy path</button><br>
+      <span class="sub">In the file dialog press Cmd+Shift+G and paste the path.</span></li>
+    <li>Leave this page open. It refreshes by itself after every sync.</li>
+  </ol>
+  <p class="sub" id="support"></p>
+</section>
+
+<div id="app" class="hidden">
+  <div id="skills"></div>
+  <div id="bar">
+    <input type="search" id="search" placeholder="Search item, quest, recipe, remark" aria-label="Search">
+    <span id="chips"></span>
+    <select id="typefilter" aria-label="Item type"></select>
+    <!-- The groups below are lined up with their columns by placeColTools(). -->
+        <div class="group" id="tools-prof">
+      <select id="profchar" aria-label="Character whose professions colour the profession columns" title="The profession columns are coloured for this character's skills. Pick another character to see what they could use from these bags."></select>
+      <label class="check" title="Also mark professions that use an item one step on: a recipe turns the item into something that their recipes use. Shown lighter, with an arrow."><input type="checkbox" id="showindirect" checked> Indirect uses</label>
+        </div>
+        <div class="group" id="tools-rows">
+    <label class="check"><input type="checkbox" id="showbank" checked> Bank</label>
+    <label class="check" title="Items the character is wearing"><input type="checkbox" id="showworn" checked> Equipped</label>
+        </div>
+        <div class="group" id="tools-dec">
+      <label class="check" title="Items you marked Keep forever are hidden until you tick this."><input type="checkbox" id="showkept"> Kept forever <span id="keptcount"></span></label>
+      <select id="decfilter" aria-label="Decision filter"></select>
+        </div>
+    <details id="questfilter">
+      <summary>Quest filter<span id="questfilter-count"></span></summary>
+      <div class="menu">
+        <label class="check" title="Quests that can be handed in again and again, and reputation hand-ins and level 60 hand-ins such as the cloth quests. The quest dialog always lists them."><input type="checkbox" id="showrep"> Repeatable, reputation and level 60 quests</label>
+        <label class="check"><input type="checkbox" id="showdone"> Finished and other-faction quests</label>
+      </div>
+    </details>
+  </div>
+  <main>
+    <div class="tablewrap">
+      <table>
+        <thead><tr>
+          <th data-sort="name" tabindex="0">Item</th>
+          <th data-sort="bound" class="icon bindcol" tabindex="0" title="Soulbound, or binds when equipped or used" aria-label="Binding"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M7.6 10.4a3 3 0 0 0 4.2 0l2.4-2.4A3 3 0 0 0 10 3.8L8.9 4.9M10.4 7.6a3 3 0 0 0-4.2 0L3.8 10A3 3 0 0 0 8 14.2l1.1-1.1"/></svg></th>
+          <th data-sort="minlevel" class="num" tabindex="0" title="Character level needed to use or equip the item">Lvl</th>
+          <th data-sort="ilvl" class="num" tabindex="0" title="Item level of gear">iLvl</th>
+          <th data-sort="type" tabindex="0">Type</th>
+          <th data-sort="bags" class="num icon" tabindex="0" title="In bags" aria-label="In bags"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M6 6h6l2.5 7.5a1.5 1.5 0 0 1-1.4 2H4.9a1.5 1.5 0 0 1-1.4-2zM6.5 6V4.5a2.5 2.5 0 0 1 5 0V6"/></svg></th>
+          <th data-sort="bank" class="num icon" tabindex="0" title="In the bank" aria-label="In the bank"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M2.5 7 9 3l6.5 4zM4.5 7.5V13M9 7.5V13M13.5 7.5V13M2.5 15h13"/></svg></th>
+          <th data-sort="worn" class="num icon" tabindex="0" title="Equipped" aria-label="Equipped"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M6.2 3 2.8 5.2l1.6 3 1.8-.9V15h5.6V7.3l1.8.9 1.6-3L11.8 3a2.8 2.8 0 0 1-5.6 0z"/></svg></th>
+          <th data-sort="value" class="num" tabindex="0">Vendor</th>
+          <th data-sort="auction" class="num" tabindex="0" title="Lowest price Auctionator saw at the auction house, for all you have. Open the auction house and scan with Auctionator to refresh it.">Auction</th>
+          <th data-sort="quest" class="questcol icon" tabindex="0" title="Quests that need the item: the level of the quest in your log, otherwise of the highest open quest. Click a number for the list." aria-label="Quests"><svg class="questmark" viewBox="0 0 18 18" aria-hidden="true"><path d="M6.6 2h4.8l-1 9.2H7.6z"/><circle cx="9" cy="14.6" r="1.9"/></svg></th>
+          <th data-sort="decision" tabindex="0">Decision</th>
+          <th>Remark</th>
+        </tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+<div id="drop"></div>
+<input type="file" id="filepick" accept=".lua" class="hidden">
+
+<script>const whTooltips = { colorLinks: false, iconizeLinks: true, renameLinks: false };</script>
+<script src="https://wow.zamimg.com/js/tooltips.js" async></script>
+<script>
+"use strict";
+
+// ---------- Lua SavedVariables parser ----------
+function parseSavedVariables(text) {
+  let i = 0;
+  const n = text.length;
+  function ws() {
+    for (;;) {
+      while (i < n && /\s/.test(text[i])) i++;
+      if (text[i] === "-" && text[i + 1] === "-") { while (i < n && text[i] !== "\n") i++; } else return;
+    }
+  }
+  function str() {
+    const quote = text[i++];
+    let out = "";
+    while (i < n && text[i] !== quote) {
+      let c = text[i++];
+      if (c === "\\") {
+        c = text[i++];
+        if (c === "n") out += "\n"; else if (c === "r") out += "\r"; else if (c === "t") out += "\t";
+        else if (c === "\n") out += "\n";
+        else if (/[0-9]/.test(c)) {
+          let d = c;
+          while (d.length < 3 && /[0-9]/.test(text[i])) d += text[i++];
+          out += String.fromCharCode(parseInt(d, 10));
+        } else out += c;
+      } else out += c;
+    }
+    i++;
+    return out;
+  }
+  function value() {
+    ws();
+    const c = text[i];
+    if (c === "{") return table();
+    if (c === '"' || c === "'") return str();
+    const m = /^(-?(?:0x[0-9a-fA-F]+|\d+\.?\d*(?:[eE][-+]?\d+)?|\.\d+)|true|false|nil|-?inf|-?nan\w*)/.exec(text.slice(i, i + 40));
+    if (!m) throw new Error("Unexpected text at position " + i + ": " + text.slice(i, i + 20));
+    i += m[0].length;
+    if (m[0] === "true") return true;
+    if (m[0] === "false") return false;
+    if (m[0] === "nil") return null;
+    const num = Number(m[0]);
+    return Number.isNaN(num) ? null : num;
+  }
+  function table() {
+    i++;
+    const obj = {};
+    let pos = 0, keyed = false;
+    for (;;) {
+      ws();
+      if (text[i] === "}") { i++; break; }
+      if (text[i] === "[") {
+        i++;
+        const k = value();
+        ws(); i++;            // ]
+        ws(); i++;            // =
+        obj[k] = value();
+        keyed = true;
+      } else {
+        const m = /^([A-Za-z_]\w*)\s*=(?!=)/.exec(text.slice(i, i + 80));
+        if (m) { i += m[0].length; obj[m[1]] = value(); keyed = true; }
+        else obj[++pos] = value();
+      }
+      ws();
+      if (text[i] === "," || text[i] === ";") i++;
+    }
+    if (!keyed) { const arr = []; for (let k = 1; k <= pos; k++) arr.push(obj[k]); return arr; }
+    return obj;
+  }
+  const result = {};
+  for (;;) {
+    ws();
+    if (i >= n) break;
+    const m = /^([A-Za-z_]\w*)\s*=/.exec(text.slice(i, i + 120));
+    if (!m) throw new Error("This does not look like a SavedVariables file.");
+    i += m[0].length;
+    result[m[1]] = value();
+  }
+  return result;
+}
+const list = v => Array.isArray(v) ? v : (v && typeof v === "object" ? Object.values(v) : []);
+
+// ---------- state ----------
+const DECISIONS = [["", "Undecided"], ["forever", "Keep forever"], ["keep", "Keep"],["auction", "Auction"], ["toss", "Toss"], ["twink", "Twink"]];
+const NOTES_KEY = "bagboard.notes.v2", NOTES_KEY_V1 = "bagboard.notes.v1";
+const WOWHEAD = "https://www.wowhead.com/forever/de/";
+const $ = id => document.getElementById(id);
+const state = { db: null, charKey: null, handle: null, lastModified: 0, sort: "type", dir: 1, view: "all",
+  search: "", type: "", dec: "*", showBank: true, showWorn: true, showDone: false, showKept: false, showRep: false, showIndirect: true, notes: { version: 2, chars: {}, legacy: {} }, notesMtime: null, renderPending: false };
+
+// Notes are per character: { version: 2, chars: { character: { itemId: { d, r } } }, legacy: { itemId: { d, r } } }.
+// "legacy" holds notes from before that; assignLegacy() hands them to the characters that carry the item.
+function asNotes(data) {
+  if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("not notes");
+  if (data.version !== 2) return { version: 2, chars: {}, legacy: data };
+  const ok = x => x && typeof x === "object" && !Array.isArray(x);
+  const chars = {};
+  for (const [key, bucket] of Object.entries(ok(data.chars) ? data.chars : {})) if (ok(bucket)) chars[key] = bucket;
+  return { version: 2, chars, legacy: ok(data.legacy) ? data.legacy : {} };
+}
+function loadNotes() {
+  try { state.notes = asNotes(JSON.parse(localStorage.getItem(NOTES_KEY) || localStorage.getItem(NOTES_KEY_V1) || "{}")); }
+  catch (e) { state.notes = asNotes({}); }
+}
+const SERVED = location.protocol === "http:" || location.protocol === "https:";
+// The helper holds the notes. This page sends it only the single changes made here and takes over
+// its copy in return, so a page that was opened earlier cannot undo what another one saved.
+// A change is { char: character or null for a legacy note, id: itemId, and d, r or remove }.
+let notesTimer = null, notesFailed = false;
+let unsent = [];    // changes not sent yet
+let sending = [];   // changes in the request that is under way
+function applyChanges(notes, changes) {
+  for (const c of changes) {
+    const bucket = c.char == null ? notes.legacy : (notes.chars[c.char] = notes.chars[c.char] || {});
+    const next = c.remove ? {} : Object.assign({}, bucket[c.id]);
+    if (!c.remove) for (const f of ["d", "r", "t"]) if (f in c) next[f] = c[f];
+    for (const f of ["d", "r", "t"]) if (!next[f]) delete next[f];
+    if (!next.d && !next.r) delete bucket[c.id]; else bucket[c.id] = next;
+  }
+}
+// Every note of a notes object as a list of changes.
+function storeLocal() {
+  try { localStorage.setItem(NOTES_KEY, JSON.stringify(state.notes)); } catch (e) { if (!SERVED) showMsg("Could not save notes in this browser. Start BagBoard with the helper so they are kept in its notes file."); }
+}
+function change(changes) {
+  if (!changes.length) return;
+  applyChanges(state.notes, changes);
+  if (SERVED) unsent.push(...changes);
+  saveNotes();
+}
+// Notes made before they were per character go to every character that carries the item.
+function assignLegacy() {
+  const chars = state.db && state.db.chars;
+  if (!chars) return;
+  const changes = [];
+  for (const [id, n] of Object.entries(state.notes.legacy)) {
+    if (!n || typeof n !== "object") continue;
+    let given = false;
+    for (const [key, c] of Object.entries(chars)) {
+      if (!(c && c.items && c.items[id])) continue;
+      given = true;
+      if (!(state.notes.chars[key] || {})[id]) changes.push({ char: key, id, d: String(n.d || ""), r: String(n.r || "") });
+    }
+    if (given) changes.push({ char: null, id, remove: true });
+  }
+  change(changes);
+}
+const notesSignature = n => {
+  const bucket = b => Object.keys(b).map(k => [k, (b[k] || {}).d || "", (b[k] || {}).r || "", (b[k] || {}).t || ""]);
+  return JSON.stringify([bucket(n.legacy), Object.keys(n.chars).sort().filter(k => Object.keys(n.chars[k]).length).map(k => [k, bucket(n.chars[k])])]);
+};
+function adoptNotes(notes, mtime) {
+  const before = notesSignature(state.notes);
+  applyChanges(notes, sending);
+  applyChanges(notes, unsent);
+  state.notes = notes;
+  state.notesMtime = mtime;
+  storeLocal();
+  assignLegacy();
+  if (state.db && notesSignature(state.notes) !== before) render();
+}
+function sendNotes() {
+  if (!unsent.length || sending.length) return;
+  sending = unsent;
+  unsent = [];
+  fetch("/notes", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(sending) })
+    .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+    .then(res => {
+      sending = [];
+      adoptNotes(asNotes(res.notes), res.mtime);
+      if (notesFailed) { notesFailed = false; showMsg(""); }
+      sendNotes();    // changes made while the request was under way
+    })
+    .catch(() => {
+      // Keep the changes; pollServer tries again.
+      unsent = sending.concat(unsent);
+      sending = [];
+      notesFailed = true;
+      showMsg("Could not save notes. Is the BagBoard helper window still open?");
+    });
+}
+function saveNotes() {
+  storeLocal();
+  if (!SERVED) return;
+  clearTimeout(notesTimer);
+  notesTimer = setTimeout(sendNotes, 400);
+}
+async function refreshNotes(mtime) {
+  let notes;
+  try {
+    const r = await fetch("/notes");
+    if (!r.ok) throw new Error();
+    notes = asNotes(await r.json());
+  } catch (e) { showMsg("Could not read the notes from the BagBoard helper."); return; }
+  adoptNotes(notes, mtime);    // the helper's copy counts; the one in this browser is only a mirror of it
+}
+const SKILL_NAMES = { 171: "Alchemie", 164: "Schmiedekunst", 333: "Verzauberkunst", 202: "Ingenieurskunst", 165: "Lederverarbeitung",
+  197: "Schneiderei", 185: "Kochkunst", 129: "Erste Hilfe", 186: "Bergbau", 182: "Kräuterkunde", 393: "Kürschnerei", 356: "Angeln" };
+const INDIRECT_KEY = "bagboard-indirect";
+let usesTimer = null;
+function wantedIds() {
+  const c = state.db && state.db.chars[state.charKey];
+  if (!c) return [];
+  return Object.keys(c.items || {});
+}
+async function fetchUses() {
+  clearTimeout(usesTimer);
+  if (!SERVED) return;
+  const ids = wantedIds();
+  if (!ids.length) return;
+  try {
+    const res = await (await fetch("/uses?ids=" + ids.join(","))).json();
+    state.recipeList = Object.assign(state.recipeList || {}, res.items);
+    state.made = Object.assign(state.made || {}, res.made);      // item ID -> { name, recipes }: what the recipes make, where other recipes use that
+    state.recipeInfo = res;      // pending, error, skills (profession names), version, count
+    render();
+    if (res.pending) usesTimer = setTimeout(fetchUses, 4000);
+  } catch (e) {}
+}
+// On the first answer from the helper: if the game does not have the addon, ask to install it.
+let installStep = null;    // null: not asked yet, "ask": OK installs, "info": OK closes
+function installText(title, text, path, step, canChange) {
+  $("install-title").textContent = title;
+  $("install-text").textContent = text;
+  $("install-path").textContent = path;
+  $("install-later").classList.toggle("hidden", step !== "ask");
+  $("install-change").classList.toggle("hidden", !canChange);
+  installStep = step;
+}
+function showInstall(addon, addonDir) {
+  if (installStep || $("settings").open || (addon !== "missing" && addon !== "nogame")) return;
+  if (addon === "missing") installText("Install the BagBoard addon?", "The addon is not in the game yet. OK installs it into:", addonDir, "ask", true);
+  else installText("WoW Forever not found", "The addon cannot be installed, because the folder above this one does not exist. " +
+    "Use Change location to say where WoW Forever is.", addonDir, "info", true);
+  $("install").showModal();
+}
+// The helper keeps an installed addon in step with its own version. Tell the player once per update,
+// because the game only picks the new files up at /reload (or at a restart when the file list changed).
+const UPDATE_SEEN = "bagboard.addonUpdateSeen", APP_SEEN = "bagboard.appUpdateSeen";
+function showAddonUpdate() {
+  const u = state.addonUpdated, app = state.app;
+  let seen = 0, appSeen = "";
+  try { seen = +localStorage.getItem(UPDATE_SEEN) || 0; appSeen = localStorage.getItem(APP_SEEN) || ""; } catch (e) {}
+  // BagBoard itself was updated at this start, and the addon in the game along with it.
+  const appNews = app && app.updatedFrom && appSeen !== app.version ? "BagBoard was updated from version " + app.updatedFrom + " to " + app.version + ". " : "";
+  const addonNews = u && u.ok && u.at > seen ? "The BagBoard addon in the game was updated to match this version. " +
+    (u.restart ? "Restart WoW Forever completely to use it." : "Type /reload in game to use it.") : "";
+  if (!appNews && !addonNews) { if (!u || u.ok) $("notice").classList.add("hidden"); return; }
+  $("notice-text").textContent = appNews + addonNews;
+  $("notice").classList.remove("hidden");
+  $("notice-ok").onclick = () => {
+    try { if (addonNews) localStorage.setItem(UPDATE_SEEN, String(u.at)); if (appNews) localStorage.setItem(APP_SEEN, app.version); } catch (e) {}
+    $("notice").classList.add("hidden");
+  };
+}
+async function installAddon() {
+  if (installStep !== "ask") { $("install").close(); return; }
+  const path = $("install-path").textContent;
+  $("install-go").disabled = true;
+  try {
+    const res = await (await fetch("/install", { method: "POST" })).json();
+    if (!res.ok) throw new Error(res.output || "");
+    installText("Addon installed", "Restart WoW Forever completely so that it finds the new addon. " +
+      "Then click the BagBoard button in game or type /bb sync. Installed into:", path, "info", false);
+  } catch (e) {
+    installText("Could not install the addon", (e.message || "Is the BagBoard helper window still open?") + " OK tries again. Target:", path, "ask", true);
+  }
+  $("install-go").disabled = false;
+}
+
+// Settings: where the game is, and which data file of the addon to read.
+let askInstallAgain = false;
+// Where the board's data comes from. These are the same for every character: the two addons are installed for
+// the whole game, so the most recently synced character tells their state; the recipe list belongs to the helper.
+function sources() {
+  const chars = Object.values((state.db && state.db.chars) || {});
+  const c = chars.slice().sort((a, b) => (b.updated || 0) - (a.updated || 0))[0] || {};
+  const out = [];
+  out.push(!SERVED ? { label: "Helper", text: "this page was opened without the helper", bad: true, hint: "Start BagBoard with \"Start BagBoard.command\". Without the helper there is no recipe list, the addon cannot be installed from here, and notes stay in this browser only." }
+    : state.helper === "down" ? { label: "Helper", text: "cannot be reached", bad: true, hint: "Its window was probably closed. Start BagBoard again with \"Start BagBoard.command\". Decisions you make meanwhile are sent once it is back." }
+    : { label: "Helper", text: "connected" });
+  if (SERVED && state.helper !== "down") {
+    if (state.app && state.app.version) out.push({ label: "BagBoard", text: "version " + state.app.version });
+    const u = state.addonUpdated, a = state.addon;
+    out.push(u && !u.ok ? { label: "Addon", text: "could not be updated", bad: true, hint: u.error + " The helper tries again every minute." }
+      : a === "missing" ? { label: "Addon", text: "not installed in the game", bad: true, hint: "Reload this page to get the offer to install it." }
+      : a === "nogame" ? { label: "Addon", text: "WoW Forever folder not found", bad: true, hint: "Correct the folder below." }
+      : a === "outdated" ? { label: "Addon", text: "being updated" }
+      : { label: "Addon", text: a ? "installed, version " + (state.addonVersion || "?") + (state.addonBuild ? " (build " + state.addonBuild + ")" : "") : "asking the helper…" });
+  }
+  const q = c.questie;
+  out.push(q === "ready" ? { label: "Quest data", text: "Questie" }
+    : q === "missing" ? { label: "Quest data", text: "Questie not found", bad: true, hint: "Without the addons Questie and QuestieDB the quest column stays empty." }
+    : q === "building" ? { label: "Quest data", text: "Questie's data was still being read at the last sync", bad: true, hint: "Wait a few seconds after login, then /bb sync again." }
+    : { label: "Quest data", text: "not scanned yet" });
+  out.push(c.auctionator ? { label: "Auction prices", text: "Auctionator" }
+    : c.auctionator === false ? { label: "Auction prices", text: "Auctionator not found", bad: true, hint: "Without the addon Auctionator the Auction column stays empty." }
+    : { label: "Auction prices", text: "not scanned yet" });
+  if (SERVED) {
+    const i = state.recipeInfo;
+    out.push(!i ? { label: "All recipes", text: "asking the helper…" }
+      : i.version ? { label: "All recipes", text: i.count + " from game build " + i.version + (i.error ? ". " + i.error : ""), bad: !!i.error, hint: i.error ? "The older list stays in use." : "" }
+      : i.pending ? { label: "All recipes", text: "downloading" }
+      : { label: "All recipes", text: i.error || "not loaded", bad: true, hint: "Without the list the profession columns stay empty. The helper tries again within the hour." });
+  }
+  return out;
+}
+async function openSettings(fromInstall) {
+  let s = null;
+  if (SERVED) { try { s = await (await fetch("/settings")).json(); } catch (e) { state.helper = "down"; setStatus(); } }
+  askInstallAgain = fromInstall;
+  if ($("install").open) $("install").close();
+  $("set-sources").innerHTML = sources().map(x => `<li class="${x.bad ? "bad" : ""}"><span>${esc(x.label)}</span><div><b>${esc(x.text)}</b>${x.hint ? `<p class="hint">${esc(x.hint)}</p>` : ""}</div></li>`).join("");
+  $("set-locations").hidden = !s;       // the locations belong to the helper
+  $("set-save").hidden = !s;
+  $("set-cancel").textContent = s ? "Cancel" : "Close";
+  $("set-error").classList.add("hidden");
+  if (!s) { $("settings").showModal(); return; }
+  $("set-game").value = s.gameDir;
+  $("set-game").disabled = s.gameDirFromEnv;
+  $("set-game-hint").textContent = (s.gameDirFromEnv ? "Set by BAGBOARD_WOW_DIR for this run of the helper. " : "") + "The addon goes into " + s.addonDir +
+    (s.addon === "installed" ? " (installed)." : s.addon === "missing" ? " (not installed yet)." : " (there is no Interface/AddOns in this folder).");
+  $("set-saved").value = s.savedFile;
+  $("set-saved-hint").textContent = (s.reading ? "Reading now: " + s.reading + ". " : "No data file found yet. ") +
+    "The game writes it into its own folder, under WTF/Account/<account>/SavedVariables. Fill this in only to read a copy from somewhere else.";
+  $("settings").showModal();
+}
+async function saveSettings() {
+  try {
+    const r = await fetch("/settings", { method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ gameDir: $("set-game").value, savedFile: $("set-saved").value }) });
+    const res = await r.json();
+    if (!r.ok) throw new Error(res.error || "");
+    $("settings").close();    // the close handler below makes the page ask the helper again
+    installStep = null;
+    state.lastModified = -1;
+  } catch (e) {
+    $("set-error").textContent = "Not saved. " + (e.message || "Is the BagBoard helper window still open?");
+    $("set-error").classList.remove("hidden");
+  }
+}
+async function pollServer() {
+  try {
+    const { mtime, notes, addon, addonDir, addonUpdated, addonBuild, addonVersion, app } = await (await fetch("/mtime")).json();
+    // BagBoard updated itself and started over: this page is the old one, so load the new one.
+    if (app && state.app && app.version !== state.app.version) { location.reload(); return; }
+    state.app = app || null;
+    state.addonBuild = addonBuild || "";
+    state.addonVersion = addonVersion || "";
+    state.live = true;
+    state.addon = addon;
+    state.addonUpdated = addonUpdated || null;
+    showAddonUpdate();
+    showInstall(addon, addonDir);
+    if (notes !== state.notesMtime) await refreshNotes(notes);    // changed by another page, or first contact
+    else if (notesFailed) sendNotes();
+    state.helper = mtime ? "ok" : "waiting";
+    if (!mtime) { showMsg(""); setStatus(); return; }
+    if (mtime !== state.lastModified) {
+      const data = await (await fetch("/data")).json();
+      state.lastModified = data.mtime;
+      loadText(data.text);
+      fetchUses();
+    } else setStatus();
+  } catch (e) {
+    state.live = false;
+    state.helper = "down";
+    setStatus();
+  }
+}
+// The character whose skills colour the profession columns: the one shown, unless another is picked in the filter bar.
+function profKey() { return state.profChar && state.db && state.db.chars[state.profChar] ? state.profChar : state.charKey; }
+function note(id) { return (state.notes.chars[state.charKey] || {})[id] || {}; }    // of the character shown
+function setNote(id, patch) {
+  if (state.charKey) change([Object.assign({ char: state.charKey, id: String(id) }, patch)]);
+}
+// Which other character an item is best sent to: the one whose profession recipes use it.
+// Recipes are only known for characters whose profession window was open once with the addon.
+// Returns { key, prof } or null.
+const TRADE_GOOD_PROFS = { 1: ["Ingenieurskunst"], 5: ["Schneiderei"], 6: ["Lederverarbeitung"], 7: ["Schmiedekunst", "Ingenieurskunst"],
+  8: ["Kochkunst"], 9: ["Alchimie"], 12: ["Verzauberkunst"] };    // trade good subclass -> profession names as the deDE game reports them
+// From the list of all recipes: the other character whose profession gets the best skill-up colour out of the
+// item at its current skill. Needs no profession window to have been opened.
+function twinkFromRecipeList(id) {
+  const entry = state.recipeList && state.recipeList[id];
+  const names = (state.recipeInfo && state.recipeInfo.skills) || {};
+  if (!entry || !entry.recipes.length) return null;
+  let best = null;
+  for (const [key, c] of Object.entries(state.db.chars)) {
+    if (key === state.charKey) continue;
+    for (const sk of list(c.skills)) {
+      const mine = entry.recipes.filter(r => names[r.skill] === sk.name);
+      if (!mine.length) continue;
+      const colours = mine.map(r => SKILL_COLOURS.indexOf(skillColour(r, sk.rank || 0)));
+      // best colour first (grey still counts: the twink can use it), then how many recipes still give skill-ups
+      const score = Math.max(...colours) * 1000 + colours.filter(x => x > 0).length + 1;
+      if (!best || score > best.score) best = { key, prof: sk.name, score };
+    }
+  }
+  return best;
+}
+function twinkFor(id) {
+  const fromList = twinkFromRecipeList(id);
+  if (fromList) return fromList;
+  // Without the recipe list (page opened without the helper): the other characters' scanned recipes.
+  let best = null;
+  const it = (state.db.chars[state.charKey].items || {})[id];
+  for (const [key, c] of Object.entries(state.db.chars)) {
+    if (key === state.charKey) continue;
+    for (const [prof, p] of Object.entries(c.recipes || {})) {
+      let score = 0;
+      for (const r of list(p.list)) {
+        if (!(r.r && r.r[id])) continue;
+        score += r.learned === false ? 1 : r.diff === "Trivial" ? 20 : 400;    // learned and still useful counts most
+      }
+      if (score && (!best || score > best.score)) best = { key, prof, score };
+    }
+    // No recipe known: go by the kind of trade good and the character's professions, highest skill first.
+    const profs = it && it.classID === 7 ? TRADE_GOOD_PROFS[it.subclassID] || [] : [];
+    for (const sk of list(c.skills)) {
+      const score = profs.includes(sk.name) ? 10 + (sk.rank || 0) / 1000 : 0;
+      if (score && (!best || score > best.score)) best = { key, prof: sk.name, score };
+    }
+  }
+  return best;
+}
+
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+function money(copper) {
+  if (!copper) return "";
+  const g = Math.floor(copper / 10000), s = Math.floor(copper % 10000 / 100), c = copper % 100;
+  return (g ? g + "g " : "") + (g || s ? s + "s " : "") + c + "c";
+}
+// Money with the game's coin icons (from Wowhead's icon host). If an icon does not load, the letter stays.
+function moneyHtml(copper) {
+  if (!copper) return "";
+  const g = Math.floor(copper / 10000), sv = Math.floor(copper % 10000 / 100), c = copper % 100;
+  const coin = (n, kind, letter) => `${n}<img class="coin" src="https://wow.zamimg.com/images/icons/money-${kind}.gif" alt="${letter}" onerror="this.replaceWith(this.alt)">`;
+  return [g ? coin(g, "gold", "g") : "", g || sv ? coin(sv, "silver", "s") : "", coin(c, "copper", "c")].filter(Boolean).join(" ");
+}
+// A character in the selector: name, then level, race and class as far as the game data has them.
+function charLabel(key) {
+  const c = state.db.chars[key] || {};
+  const rest = [c.level, c.race, c.class].filter(Boolean).join(" ");
+  return (c.name || key) + (rest ? " · " + rest : "");
+}
+// The selected character is kept in the address (?char=Name), so a reload or a bookmark shows the same one.
+function charFromUrl() { try { return new URLSearchParams(location.search).get("char") || null; } catch (e) { return null; } }
+function charToUrl() {
+  try {
+    const url = new URL(location.href);
+    if (url.searchParams.get("char") === state.charKey) return;
+    url.searchParams.set("char", state.charKey);
+    history.replaceState(null, "", url);
+  } catch (e) {}      // some browsers refuse this for pages opened as a file; the selection then just is not kept
+}
+function ago(ts) {
+  if (!ts) return "never";
+  const sec = Math.max(0, Date.now() / 1000 - ts);
+  if (sec < 90) return "just now";
+  if (sec < 3600) return Math.round(sec / 60) + " min ago";
+  if (sec < 86400) return Math.round(sec / 3600) + " h ago";
+  return Math.round(sec / 86400) + " d ago";
+}
+function showMsg(text) { const m = $("msg"); m.textContent = text || ""; m.classList.toggle("hidden", !text); }
+
+// ---------- model ----------
+// Repeatable and reputation hand-ins. Either Questie marks the quest, or it is a level 60 quest: the hand-ins
+// for an item at that level are cloth donations, war effort collections and the like. They are hidden from
+// the overview unless the quest is in the log; the quest dialog always lists them.
+function repQuest(q) { return !!(q.repeatable || q.reputation || q.level === 60); }
+function buildRows() {
+  const c = state.db.chars[state.charKey];
+  const items = c.items || {}, bags = c.bags || {}, bank = c.bank || {};
+  const byRecipe = {};      // itemID -> [{prof, name, qty, learned, diff, id}]
+  for (const [prof, p] of Object.entries(c.recipes || {})) {
+    for (const r of list(p.list)) {
+      for (const [itemID, qty] of Object.entries(r.r || {})) {
+        (byRecipe[itemID] = byRecipe[itemID] || []).push({ prof, name: r.name, qty, learned: r.learned, diff: r.diff, id: r.id, trivial: r.trivial, rank: p.rank });
+      }
+    }
+  }
+  const logById = {};
+  for (const q of list(c.questLog)) logById[q.id] = q;
+  const rows = [];
+  for (const [id, it] of Object.entries(items)) {
+    const inBags = bags[id] || 0, inBank = bank[id] || 0, worn = (c.equipped || {})[id] || 0;
+    // Quests of the other faction, race or class are left out entirely unless asked for.
+    const allQuests = list(it.quests).filter(q => q.id > 0 && (state.showDone || q.state !== "other")).map(q => {
+      const log = logById[q.id];
+      let progress = "";
+      if (log) {
+        const o = list(log.obj).find(o => o.text && it.name && o.text.includes(it.name));
+        if (o && o.need) progress = o.have + "/" + o.need;
+      }
+      return Object.assign({}, q, { progress });
+    });
+    const quests = allQuests.filter(q => state.showRep || !repQuest(q) || logById[q.id]);
+    const recipes = byRecipe[id] || [];
+    const liveQuests = quests.filter(q => q.state === "log" || q.state === "open");
+    const liveRecipes = recipes.filter(r => r.learned !== false && r.diff !== "Trivial");
+    // The quest shown in the quest column: the one in the log, otherwise the highest open one.
+    const shown = quests.filter(q => state.showDone || q.state === "log" || q.state === "open");
+    const rankOf = q => ({ log: 3, open: 2 }[q.state] || 1) * 1000 + (q.level || 0);
+    const questTop = shown.slice().sort((a, b) => rankOf(b) - rankOf(a))[0] || null;
+    const wh = state.recipeList && state.recipeList[id];
+    const skillNames = (state.recipeInfo && state.recipeInfo.skills) || {};
+    const whProfs = {};
+    for (const r of (wh && wh.recipes) || []) {
+      const name = skillNames[r.skill] || SKILL_NAMES[r.skill] || ("Skill " + r.skill);
+      const p = whProfs[name] = whProfs[name] || { grey: 0, count: 0, names: [] };
+      p.count++;
+      if (r.grey > p.grey) p.grey = r.grey;
+      p.names.push(r.name + (r.en && r.en !== r.name ? " / " + r.en : "") + " ×" + r.qty + " (yellow at " + r.yellow + ", grey at " + r.grey + ")");
+    }
+    const mySkills = {};
+    for (const s of list(state.db.chars[profKey()].skills)) mySkills[s.name] = s.rank;
+    const profs = profsFor(id, mySkills);
+    rows.push({ id, it, inBags, inBank, worn, quests, recipes, liveQuests, liveRecipes, wh, whProfs, mySkills, profs, questTop, shownQuests: shown, allQuests, level: c.level || 0,
+      value: (it.sell || 0) * (inBags + inBank), auction: it.bound ? 0 : (it.auction || 0) * (inBags + inBank),
+      useScore: liveQuests.filter(q => q.state === "log").length * 100 + liveQuests.length * 10 + liveRecipes.length });
+  }
+  return rows;
+}
+
+// The skill-up colour of a recipe at a skill: orange below yellow, then yellow, green from the midpoint, grey at the end.
+const SKILL_COLOURS = ["Trivial", "Easy", "Medium", "Optimal"];
+const COLOUR_WORDS = { Trivial: "grey", Easy: "green", Medium: "yellow", Optimal: "orange" };
+function greenAt(r) { return r.yellow + Math.floor((r.grey - r.yellow) / 2); }
+function skillColour(r, rank) {
+  if (rank == null) return "";
+  return rank < r.yellow ? "Optimal" : rank < greenAt(r) ? "Medium" : rank < r.grey ? "Easy" : "Trivial";
+}
+// The professions that use an item, for the profession columns: directly (recipes) and, with "Indirect uses"
+// ticked, one step on (via): a recipe turns the item into something that recipes of that profession use.
+// The number and colours go by the direct recipes if there are any, otherwise by the ones a step on.
+function profSkills() {     // skills of the character the profession columns are coloured for
+  const skills = {};
+  for (const s of list(state.db.chars[profKey()].skills)) skills[s.name] = s.rank;
+  return skills;
+}
+function profsFor(id, mySkills, indirect = state.showIndirect) {
+  const wh = state.recipeList && state.recipeList[id];
+  const skillNames = (state.recipeInfo && state.recipeInfo.skills) || {};
+  const profs = {};
+  const prof = skill => {
+    const name = skillNames[skill] || SKILL_NAMES[skill] || ("Skill " + skill);
+    return profs[skill] = profs[skill] || { id: skill, name, rank: mySkills[name], grey: 0, best: -1, recipes: [], via: [] };
+  };
+  for (const r of (wh && wh.recipes) || []) {
+    prof(r.skill).recipes.push(r);
+    const made = indirect && r.makes && String(r.makes) !== String(id) && state.made && state.made[r.makes];
+    for (const next of (made && made.recipes) || []) {
+      const p = prof(next.skill);
+      let v = p.via.find(v => v.first === r);
+      if (!v) p.via.push(v = { first: r, id: r.makes, name: made.name, recipes: [] });
+      v.recipes.push(next);
+    }
+  }
+  for (const p of Object.values(profs)) {
+    p.onward = [...new Set(p.via.flatMap(v => v.recipes))];
+    p.indirect = !p.recipes.length;
+    p.basis = p.indirect ? p.onward : p.recipes;
+    for (const r of p.basis) {
+      if (r.grey > p.grey) p.grey = r.grey;
+      p.best = Math.max(p.best, SKILL_COLOURS.indexOf(skillColour(r, p.rank)));
+    }
+    // What the other characters could do with it: the best skill-up colour any of them gets from these recipes.
+    p.others = [];
+    for (const [key, other] of Object.entries(state.db.chars)) {
+      const skill = key === profKey() ? null : list(other.skills).find(sk => sk.name === p.name);
+      if (skill) p.others.push({ key, rank: skill.rank, best: Math.max(...p.basis.map(r => SKILL_COLOURS.indexOf(skillColour(r, skill.rank)))) });
+    }
+    p.others.sort((a, b) => b.best - a.best);
+    // Next to direct recipes: does a recipe one step on give a better colour than they do? For the character the
+    // columns are coloured for if it has the profession, otherwise for the best of the others, as the cell itself.
+    p.chain = null;
+    if (!p.indirect && p.onward.length) {
+      const bestAt = rank => p.onward.map(r => ({ r, i: SKILL_COLOURS.indexOf(skillColour(r, rank)) })).sort((a, b) => b.i - a.i)[0];
+      const mine = p.rank != null, top = p.others[0];
+      const direct = mine ? p.best : top ? top.best : -1;
+      const tries = mine ? [{ key: "", rank: p.rank }] : p.others;
+      const found = tries.map(t => Object.assign({ key: t.key, rank: t.rank }, bestAt(t.rank))).sort((a, b) => b.i - a.i)[0];
+      if (found && found.i > direct && found.i > 0) p.chain = found;      // { key, rank, r: the recipe, i: its colour }
+    }
+    if (p.indirect && !p.grey) delete profs[p.id];     // a step on, but the tables give no skill number: nothing to show
+  }
+  return profs;
+}
+// Icons of the professions, by skill line, as used in the game (served by Wowhead's icon host like the item icons).
+const PROF_ICONS = { 171: "trade_alchemy", 164: "trade_blacksmithing", 333: "trade_engraving", 202: "trade_engineering",
+  165: "inv_misc_armorkit_17", 197: "trade_tailoring", 185: "inv_misc_food_15", 129: "spell_holy_sealofsacrifice",
+  186: "trade_mining", 182: "spell_nature_naturetouchgrow", 393: "inv_misc_pelt_wolf_01", 356: "trade_fishing", 40: "trade_brewpoison" };
+// The profession columns: always the thirteen known professions, plus any other skill that uses one of this
+// character's items. Gathering professions come
+// first, then the main crafting professions, then the rest, with Poisons last. Inside a group the character's own come first.
+const PROF_GROUP = { 182: 0, 186: 0, 393: 0,                       // herbalism, mining, skinning
+  171: 1, 164: 1, 333: 1, 202: 1, 165: 1, 197: 1,                  // alchemy, blacksmithing, enchanting, engineering, leatherworking, tailoring
+  40: 3 };                                                         // poisons; everything else is group 2
+function profColumns(all) {
+  const cols = {}, group = p => p.id in PROF_GROUP ? PROF_GROUP[p.id] : 2;
+  const names = (state.recipeInfo && state.recipeInfo.skills) || {}, mine = all.length ? all[0].mySkills : {};
+  for (const id of Object.keys(PROF_ICONS)) if (names[id]) cols[id] = { id: +id, name: names[id], rank: mine[names[id]] };
+  for (const row of all) for (const p of Object.values(row.profs)) cols[p.id] = p;
+  return Object.values(cols).sort((a, b) => group(a) - group(b) || (b.rank != null) - (a.rank != null) || a.name.localeCompare(b.name));
+}
+// A cell of a profession column. The colour is the best skill-up colour among the recipes that use the item:
+// the selected character's own if it has the profession, otherwise the best of the other characters, struck
+// through. An asterisk means another character gets a better colour out of it than the selected one.
+// The filter bar is one row, and the filters that belong to columns sit over them where there is room:
+// "Professions of" and "Indirect uses" start with the first profession column, "Kept forever" and the decision
+// filter with the Decision column, Bank and Equipped in between, the Quest filter at the right end. A group
+// never covers its neighbour: it gives way to the right, and the decision group stops before the Quest filter.
+// The search field shrinks first. If it still does not fit, the bar wraps as plain rows.
+function placeColTools() {
+  const bar = $("bar"), search = $("search"), GAP = 12;
+  const prof = $("tools-prof"), rows = $("tools-rows"), dec = $("tools-dec");
+  const box = () => bar.getBoundingClientRect();
+  const left = el => el.getBoundingClientRect().left - box().left, width = el => el.getBoundingClientRect().width;
+  bar.classList.remove("wrapped");
+  search.style.width = "";
+  const profCol = document.querySelector("th.prof"), decCol = document.querySelector("th[data-sort=decision]");
+  prof.style.display = profCol ? "" : "none";
+  // the search field gives up width so that the profession filters can start with their column
+  const fixed = left($("typefilter")) + width($("typefilter")) + GAP;
+  const over = profCol ? fixed - left(profCol) : 0;
+  if (over > 0 && width(search) - over >= 110) search.style.width = (width(search) - over) + "px";       // only if that is enough
+  const flowEnd = left($("typefilter")) + width($("typefilter")) + GAP;
+  const profLeft = profCol ? Math.max(left(profCol), flowEnd) : flowEnd;
+  const rowsLeft = profCol ? profLeft + width(prof) + GAP : flowEnd;
+  const decMax = left($("questfilter")) - GAP - width(dec);
+  const decLeft = Math.min(Math.max(decCol ? left(decCol) : 0, rowsLeft + width(rows) + GAP), decMax);
+  if (decLeft < rowsLeft + width(rows) + GAP) {       // too narrow for one row
+    search.style.width = "";
+    bar.classList.add("wrapped");
+    for (const group of [prof, rows, dec]) group.style.left = "";
+    return;
+  }
+  prof.style.left = Math.round(profLeft) + "px";
+  rows.style.left = Math.round(rowsLeft) + "px";
+  dec.style.left = Math.round(decLeft) + "px";
+}
+function profCell(row, col) {
+  const p = row.profs[col.id];
+  if (!p) return `<td class="prof"></td>`;
+  const mine = p.rank != null, top = p.others[0];
+  const colour = mine ? SKILL_COLOURS[p.best] : top ? SKILL_COLOURS[top.best] : "";
+  const star = mine && top && top.best > p.best;
+  const who = profKey() === state.charKey ? "" : profKey();
+  const hints = [mine ? (colour === "Trivial" ? "all grey" : "best recipe is " + COLOUR_WORDS[colour]) + (who ? " at " + who + "'s skill " : " at your skill ") + p.rank : (who || "this character") + " does not have " + p.name]
+    .concat(p.others.map(o => o.key + ": " + COLOUR_WORDS[SKILL_COLOURS[o.best]] + " at skill " + o.rank));
+  const n = list => list.length + (list.length === 1 ? " recipe" : " recipes");
+  const products = [...new Set(p.via.map(v => v.name))].join(", ");
+  const head = p.indirect ? p.name + ", one step on: " + n(p.onward) + (p.onward.length === 1 ? " uses" : " use") + " what this item is made into (" + products + "), skill-ups until " + p.grey + "."
+    : p.name + ": " + n(p.recipes) + ", skill-ups until " + p.grey + "." + (p.onward.length ? "\nOne step on (" + products + "): " + n(p.onward) + ", skill-ups until " + Math.max(...p.onward.map(r => r.grey)) + "."
+      + (p.chain ? "\nThe arrow: " + p.chain.r.name + " is " + COLOUR_WORDS[SKILL_COLOURS[p.chain.i]] + " at " + (p.chain.key || who || "your") + (p.chain.key || who ? "'s" : "") + " skill " + p.chain.rank + ", better than the recipes that use this item itself." : "") : "");
+  return `<td class="prof"><button type="button" class="use profcell ${colour || "nobody"}${mine ? "" : " struck"}${p.indirect ? " indirect" : ""}" data-prof="${p.id}" title="${esc(head + "\n" + hints.join("\n") + "\nClick for the recipes.")}">${p.indirect ? `<span class="arrow">→</span>` : ""}${p.grey}${p.chain ? `<span class="arrow chain ${SKILL_COLOURS[p.chain.i]}">→</span>` : ""}${star ? "*" : ""}</button></td>`;
+}
+// The recipe and quest dialogs contain Wowhead links. A modal dialog sits in the browser's top layer, above
+// everything, so Wowhead's hover tooltips would appear behind it. These two are therefore opened as plain
+// dialogs over a shade of their own, which the tooltips can rise above.
+let sheet = null, sheetFrom = null;
+function openSheet(dialog) {
+  sheetFrom = document.activeElement;
+  sheet = dialog;
+  $("shade").hidden = false;
+  dialog.show();
+  const close = dialog.querySelector(".actions button.primary") || dialog.querySelector(".actions button");
+  if (close) close.focus();
+}
+function closeSheet() {
+  if (!sheet) return;
+  sheet.close();
+  sheet = null;
+  $("shade").hidden = true;
+  if (sheetFrom && document.contains(sheetFrom)) sheetFrom.focus();
+}
+let recipeNow = null, recipeTrail = [];     // the dialog on show, and the ones stepped through before it (Back)
+let dialogIndirect = true;                  // "Indirect uses" inside the dialog: on whenever it opens, whatever the board has
+function showRecipes(row, p, stepped) {
+  if (!stepped) { recipeTrail = []; dialogIndirect = true; }
+  $("recipes-indirect").checked = dialogIndirect;
+  // The profession as the dialog's own setting sees it. With indirect uses off, one that only uses the item a step on has nothing to list.
+  p = profsFor(row.id, profSkills(), dialogIndirect)[p.id] || Object.assign({}, p, { recipes: [], via: [], onward: [], indirect: true });
+  recipeNow = { row, p };
+  $("recipes-back").hidden = !recipeTrail.length;
+  const c = state.db.chars[profKey()], info = state.recipeInfo || {};
+  const who = profKey() === state.charKey ? "This character" : profKey();
+  const names = info.skills || {}, profName = id => names[id] || SKILL_NAMES[id] || ("Skill " + id);
+  const learned = new Set(), scanned = new Set();
+  for (const prof of Object.values(c.recipes || {})) for (const r of list(prof.list)) { scanned.add(r.id); if (r.learned !== false) learned.add(r.id); }
+  const english = (info.skillsEn || {})[p.id];
+  const count = (n, one, many) => n + (n === 1 ? one : many);
+  // Listed below the item's own recipes: what a step in another profession enables. A step in this profession
+  // is a recipe in the list above, and its chip of this profession leads to what it enables.
+  const below = p.via.filter(v => v.first.skill !== p.id), belowCount = new Set(below.flatMap(v => v.recipes)).size;
+  const noTip = `target="_blank" rel="noopener" data-wh-rename-link="false" data-disable-wowhead-tooltip="true"`;
+  const tip = `target="_blank" rel="noopener" data-wh-rename-link="false"`;      // hovering shows Wowhead's tooltip of the item
+  // A recipe's name links to the item it makes, so that hovering shows that item; "recipe" below it goes to the recipe.
+  $("recipes-title").textContent = p.name + (english && english !== p.name ? " / " + english : "") + ": " + row.it.name;
+  $("recipes-sub").textContent = (p.indirect ? "No " + p.name + " recipe uses this item itself. " + (dialogIndirect ? count(p.onward.length, " recipe uses", " recipes use") + " what it is made into. " : "Tick Indirect uses for the recipes one step on. ")
+      : count(p.recipes.length, " recipe uses", " recipes use") + " this item. " + (belowCount ? count(belowCount, " more uses", " more use") + " what another profession makes of it. " : "")) +
+    (p.rank == null ? who + " does not have the profession." : who + "'s skill: " + p.rank + ".") +
+    (p.others.length ? " Others: " + p.others.map(o => o.key + " " + o.rank).join(", ") + "." : "");
+  // Under a recipe: what it makes and which professions use that. A click steps on to the made item.
+  const onward = r => {
+    const made = dialogIndirect && r.makes && String(r.makes) !== String(row.id) && state.made && state.made[r.makes];
+    if (!made) return "";
+    const per = {};
+    for (const next of made.recipes) per[next.skill] = (per[next.skill] || 0) + 1;
+    const differs = made.name !== r.name, chips = Object.keys(per).length;
+    if (!differs && !chips) return "";
+    return `<div class="sub onward"><span>${differs ? `makes <a href="${WOWHEAD}item=${r.makes}" ${tip}>${esc(made.name)}</a>${chips ? ", " : ""}` : ""}${chips ? "used by" : ""}</span>${Object.entries(per).sort((a, b) => (+b[0] === p.id) - (+a[0] === p.id) || b[1] - a[1]).map(([skill, n]) =>
+      `<button type="button" class="use step" data-step="${r.makes}" data-prof="${skill}" title="${esc(count(n, " recipe", " recipes") + " of " + profName(skill) + (n === 1 ? " uses " : " use ") + made.name + ". Click to list them.")}">${PROF_ICONS[skill] ? `<img src="https://wow.zamimg.com/images/wow/icons/medium/${PROF_ICONS[skill]}.jpg" alt="${esc(profName(skill))}" onerror="this.replaceWith(this.alt + ' ')">` : esc(profName(skill)) + " "}${n}</button>`).join("")}</div>`;
+  };
+  const line = r => {
+    const colour = skillColour(r, p.rank);
+    const know = !scanned.has(r.id) ? "" : learned.has(r.id) ? ", learned" : ", not learned";
+    return `<tr><td>${r.makes ? `<a class="name" href="${WOWHEAD}item=${r.makes}" ${tip}>${esc(r.name)}</a>` : `<a class="name" href="${WOWHEAD}spell=${r.id}" ${noTip}>${esc(r.name)}</a>`}<div class="sub">${r.en && r.en !== r.name ? esc(r.en) + " · " : ""}${r.makes ? `<a class="recipelink" href="${WOWHEAD}spell=${r.id}" ${noTip}>recipe</a>` : ""}</div>${onward(r)}</td>
+      <td class="num">×${r.qty}</td><td class="num">${r.yellow}</td><td class="num">${greenAt(r)}</td><td class="num">${r.grey}</td>
+      <td><div class="uses">${colour ? `<span class="use ${colour}">${p.others.length ? esc(profKey()) + ": " : ""}${COLOUR_WORDS[colour]}${know}</span>` : ""}${p.others.map(o => {
+        const theirs = skillColour(r, o.rank);
+        return `<span class="use ${theirs}">${esc(o.key)}: ${COLOUR_WORDS[theirs]}</span>`;
+      }).join("")}</div></td></tr>`;
+  };
+  const sorted = recipes => recipes.slice().sort((a, b) => a.yellow - b.yellow || a.grey - b.grey);
+  // The details of the step in between, for hovering the remark above the recipes it enables.
+  const viaHint = v => {
+    const name = profName(v.first.skill);
+    const who = Object.entries(state.db.chars).map(([key, ch]) => {
+      const sk = list(ch.skills).find(s => s.name === name);
+      return sk ? key + ": " + COLOUR_WORDS[skillColour(v.first, sk.rank)] : "";
+    }).filter(Boolean);
+    return name + " makes " + v.name + " from this item: " + v.first.name + ", needs ×" + v.first.qty + ", grey at " + v.first.grey + ".\n" +
+      (who.length ? who.join(", ") : "No character has " + name) + ".";
+  };
+  $("recipes-rows").innerHTML = sorted(p.recipes).map(line).join("") + below.map(v =>
+    `<tr class="via"><td colspan="6" title="${esc(viaHint(v))}">Next in the chain · <a href="${WOWHEAD}item=${v.id}" ${tip}>${esc(v.name)}</a>${v.first.skill === p.id ? "" : ` (made with ${esc(profName(v.first.skill))})`} enables:</td></tr>` + sorted(v.recipes).map(line).join("")).join("");
+  $("recipes-links").innerHTML = `Look it up on Wowhead: <a href="${WOWHEAD}item=${row.id}" target="_blank" rel="noopener" data-wh-rename-link="false" data-disable-wowhead-tooltip="true">item page</a>
+    <a href="${WOWHEAD}item=${row.id}#reagent-for" target="_blank" rel="noopener" data-wh-rename-link="false" data-disable-wowhead-tooltip="true">recipes that use it</a>
+    <a href="${WOWHEAD}search?q=${encodeURIComponent(row.it.name || "")}" target="_blank" rel="noopener">search for the name</a>`;
+  if (sheet !== $("recipes")) openSheet($("recipes"));
+  $("recipes").querySelector(".scroll").scrollTop = 0;
+  try { if (window.$WowheadPower && window.$WowheadPower.refreshLinks) window.$WowheadPower.refreshLinks(); } catch (e) {}
+}
+// Quest colours as in the game: how hard a quest of that level is for a character of this level.
+function questColour(level, mine) {
+  if (!level || !mine) return "";
+  const grey = mine <= 5 ? 0 : mine <= 39 ? mine - Math.floor(mine / 10) - 5 : mine <= 59 ? mine - Math.floor(mine / 5) - 1 : mine - 9;
+  return level >= mine + 5 ? "Hard" : level >= mine + 3 ? "Optimal" : level >= mine - 2 ? "Medium" : level > grey ? "Easy" : "Trivial";
+}
+const QUEST_STATES = { log: "In your log", open: "Not picked up yet", done: "Done", other: "Not for you" };
+function unknownQuest(row) { return !row.allQuests.length && !list(row.it.quests).length && (row.it.classID === 12 || !!row.it.questItem); }
+function questCell(row) {
+  const q = row.questTop;
+  if (!q) {     // nothing for the overview, but the hidden quests stay one click away
+    const n = row.allQuests.length;
+    // A quest item the quest data knows nothing about: a question mark that leads to the Wowhead links.
+    if (unknownQuest(row)) {
+      return `<td class="questcol"><button type="button" class="use profcell nobody unknownquest" data-quests="1" title="A quest item, but no quest is known for it. Click to look it up on Wowhead.">?</button></td>`;
+    }
+    return n ? `<td class="questcol"><button type="button" class="use profcell nobody struck hiddenquests" data-quests="1" title="${n} ${n === 1 ? "quest" : "quests"} not shown here: repeatable, reputation, level 60, finished or not for this character. Click for the list.">+${n}</button></td>` : `<td class="questcol"></td>`;
+  }
+  const more = row.allQuests.length - 1;
+  const over = q.state === "done" || q.state === "other";
+  const lines = row.shownQuests.map(x => (QUEST_STATES[x.state] || "Quest") + ": " + x.name + (x.level ? " (lvl " + x.level + ")" : ""));
+  return `<td class="questcol"><button type="button" class="use profcell ${over ? "nobody" : questColour(q.level, row.level) || "nobody"}${q.state === "log" ? " inlog" : " struck"}" data-quests="1" title="${esc(lines.join("\n") + "\nClick for the list.")}">${q.level || "?"}${more > 0 ? "<small> +" + more + "</small>" : ""}</button></td>`;
+}
+function showQuests(row) {
+  $("quests-title").textContent = "Quests: " + row.it.name;
+  $("quests-sub").textContent = "This character is level " + row.level + ". All quests for the item are listed, also the ones the overview hides." + (state.showDone ? "" : " Other-faction quests are left out.");
+  const order = q => ({ log: 0, open: 1, done: 3, other: 4 }[q.state] || 2) + (q.state === "open" && repQuest(q) ? 1 : 0);
+  $("quests-rows").innerHTML = row.allQuests.slice().sort((a, b) => order(a) - order(b) || (b.level || 0) - (a.level || 0)).map(q => {
+    const notes = [];
+    if (q.role === "starts") notes.push("the item starts it");
+    if (q.role === "source") notes.push("needed to start");
+    if (q.role === "given") notes.push("handed to you with the quest");
+    if (q.repeatable) notes.push("repeatable");
+    if (q.reputation) notes.push("reputation");
+    else if (!q.repeatable && repQuest(q)) notes.push("level 60 hand-in");
+    if (q.min > row.level) notes.push("from level " + q.min);
+    const colour = q.state === "log" || q.state === "open" ? questColour(q.level, row.level) : "";
+    return `<tr><td><a class="name" href="${WOWHEAD}quest=${q.id}" target="_blank" rel="noopener" data-wh-rename-link="false">${esc(q.name)}</a></td>
+      <td class="num">${q.level ? `<span class="use ${colour}">${q.level}</span>` : ""}</td>
+      <td class="num">${esc(q.progress || (q.need > 0 ? "" + q.need : ""))}</td>
+      <td><span class="use ${esc(q.state)}">${QUEST_STATES[q.state] || "Quest"}</span></td><td class="sub">${esc(notes.join(", "))}</td></tr>`;
+  }).join("");
+  $("quests-none").hidden = row.allQuests.length > 0;
+  $("quests-table").hidden = !row.allQuests.length;
+  $("quests-links").innerHTML = `Look it up on Wowhead: <a href="${WOWHEAD}item=${row.id}" target="_blank" rel="noopener" data-wh-rename-link="false" data-disable-wowhead-tooltip="true">item page</a>
+    <a href="${WOWHEAD}item=${row.id}#objective-of" target="_blank" rel="noopener" data-wh-rename-link="false" data-disable-wowhead-tooltip="true">quests that need it</a>
+    <a href="${WOWHEAD}item=${row.id}#starts" target="_blank" rel="noopener" data-wh-rename-link="false" data-disable-wowhead-tooltip="true">quest it starts</a>
+    <a href="${WOWHEAD}search?q=${encodeURIComponent(row.it.name || "")}" target="_blank" rel="noopener">search for the name</a>`;
+  openSheet($("quests"));
+}
+// Binding column: a gold chain for soulbound items, a dashed grey one for items that are still tradeable
+// but bind once equipped (bind type 2) or used (3).
+const CHAIN = `<path d="M7.6 10.4a3 3 0 0 0 4.2 0l2.4-2.4A3 3 0 0 0 10 3.8L8.9 4.9M10.4 7.6a3 3 0 0 0-4.2 0L3.8 10A3 3 0 0 0 8 14.2l1.1-1.1"/>`;
+function bindCell(it) {
+  const later = { 2: "Binds when equipped: still tradeable until someone wears it", 3: "Binds when used: still tradeable until it is used" }[it.bind];
+  const title = it.bound ? (it.bind === 4 ? "Quest item, cannot be traded" : "Soulbound") : later;
+  return `<td class="bindcol">${title ? `<svg viewBox="0 0 18 18" class="${it.bound ? "" : "later"}" role="img" aria-label="${title}"><title>${title}</title>${CHAIN}</svg>` : ""}</td>`;
+}
+// Level column: red when the selected character is too low; an asterisk when another character could already use it.
+// Item level, for gear only: on everything else the game's number says little.
+function gearLevel(it) { return it.ilvl && it.equipLoc && !/NON_EQUIP/.test(it.equipLoc) ? it.ilvl : 0; }
+function levelCell(row) {
+  const need = row.it.minLevel || 0;
+  if (need <= 1) return `<td class="num lvl"></td>`;
+  const low = row.level && row.level < need;
+  const able = !low ? [] : Object.entries(state.db.chars).filter(([key, other]) => key !== state.charKey && (other.level || 0) >= need).map(([key, other]) => key + " (" + other.level + ")");
+  const title = low ? "This character is level " + row.level + "." + (able.length ? " Could use it now: " + able.join(", ") + "." : "") : "";
+  return `<td class="num lvl${low ? " toolow" : ""}" title="${esc(title)}">${need}${able.length ? "*" : ""}</td>`;
+}
+
+function matchesView(row) {
+  const d = note(row.id).d || "";
+  switch (state.view) {
+    case "quest": return row.liveQuests.length > 0;
+    case "prof": return (profKey() === state.charKey && row.recipes.some(r => r.learned !== false)) || Object.values(row.profs).some(p => p.rank != null) || Object.keys(row.whProfs).some(p => p in row.mySkills);
+    case "nouse": return !row.liveQuests.length && !row.recipes.length && !Object.keys(row.whProfs).length && !Object.keys(row.profs).length && !(row.it.equipLoc && !/NON_EQUIP/.test(row.it.equipLoc)) && row.it.classID !== 0;
+    default: return true;
+  }
+}
+// "Keep forever" items (soulstone, totems, soulbound things) are settled for good, so they stay out of the way
+// unless asked for. "Keep" means keep for now and stays visible.
+// An item is listed when it is in the bags, or in the bank or worn while those are switched on.
+function located(row) { return row.inBags > 0 || (state.showBank && row.inBank > 0) || (state.showWorn && row.worn > 0); }
+function keptHidden(row) { return !state.showKept && state.dec !== "forever" && note(row.id).d === "forever"; }
+function visibleRows(all) {
+  const s = state.search.trim().toLowerCase();
+  return all.filter(row => {
+    if (!located(row)) return false;
+    if (keptHidden(row)) return false;
+    if (state.type && row.it.type !== state.type) return false;
+    const d = note(row.id).d || "";
+    if (state.dec !== "*" && d !== state.dec) return false;
+    if (!matchesView(row)) return false;
+    if (s) {
+      const hay = [row.it.name, row.it.type, row.it.subType, note(row.id).r, ...row.quests.map(q => q.name), ...row.recipes.map(r => r.name + " " + r.prof)]
+        .join(" ").toLowerCase();
+      if (!hay.includes(s)) return false;
+    }
+    return true;
+  });
+}
+function sortRows(rows) {
+  const key = {
+    name: r => (r.it.name || "").toLowerCase(), bags: r => r.inBags, bank: r => r.inBank, worn: r => r.worn,
+    type: r => ((r.it.type || "~") + " " + (r.it.subType || "") + " " + (r.it.name || "")).toLowerCase(),
+    value: r => r.value, auction: r => r.auction, bound: r => r.it.bound ? 2 : r.it.bind === 2 || r.it.bind === 3 ? 1 : 0, minlevel: r => r.it.minLevel > 1 ? r.it.minLevel : 0, ilvl: r => gearLevel(r.it),
+    uses: r => r.useScore, decision: r => note(r.id).d || "~",
+  }[state.sort];
+  if (state.sort === "quest") {     // quests in the log, then by level, then hidden-only (+n), then unknown (?); empty cells always last
+    const n = r => r.questTop ? (r.questTop.state === "log" ? 2000 : 1000) + (r.questTop.level || 0)
+      : r.allQuests.length ? 100 + r.allQuests.length : unknownQuest(r) ? 1 : null;
+    return rows.sort((a, b) => { const x = n(a), y = n(b); return x == null || y == null ? (x == null) - (y == null) : (x - y) * state.dir; });
+  }
+  if (state.sort.startsWith("prof:")) {     // a profession column: by its number, items the profession does not use last
+    const id = state.sort.slice(5), n = r => r.profs[id] ? r.profs[id].grey : null;
+    return rows.sort((a, b) => { const x = n(a), y = n(b); return x == null || y == null ? (x == null) - (y == null) : (x - y) * state.dir; });
+  }
+  return rows.sort((a, b) => { const x = key(a), y = key(b); return (x < y ? -1 : x > y ? 1 : 0) * state.dir; });
+}
+
+// ---------- render ----------
+// Auction column: what all of this item would bring at the lowest price Auctionator saw.
+function auctionHtml(row, c) {
+  const it = row.it, n = row.inBags + row.inBank;
+  if (it.bound) return "";      // soulbound items cannot be auctioned
+  if (!it.auction) return `<span class="sub">${c.auctionator ? "no price" : ""}</span>`;
+  return n > 1 ? `<span title="For all ${n}">${esc(money(row.auction))}</span><div class="sub" title="For one">@ ${esc(money(it.auction))}</div>` : esc(money(it.auction));
+}
+// One button per decision. The chosen one is pressed; pressing it again clears the decision.
+const DECISION_ICONS = {
+  keep: `<path d="M5 3h8v12.5l-4-3-4 3z"/>`,                                                                                // bookmark
+  forever: `<rect x="4" y="8" width="10" height="7.5" rx="1.5"/><path d="M6.5 8V6a2.5 2.5 0 0 1 5 0v2"/>`,                   // padlock
+  auction: `<ellipse cx="9" cy="5" rx="5" ry="2.2"/><path d="M4 5v4c0 1.2 2.2 2.2 5 2.2s5-1 5-2.2V5M4 9v4c0 1.2 2.2 2.2 5 2.2s5-1 5-2.2V9"/>`, // coins
+  toss: `<path d="M3.5 5h11M7 5V3.5h4V5M5 5l.7 10.5h6.6L13 5M7.7 8v4.5M10.3 8v4.5"/>`,                                        // bin
+  twink: `<rect x="2.5" y="4.5" width="13" height="9" rx="1.5"/><path d="M3 5.5l6 4.5 6-4.5"/>`,                             // letter
+};
+const DECISION_HINTS = { keep: "Keep for now", forever: "Keep forever (hidden from the list)", auction: "Sell at the auction house", toss: "Toss", twink: "Send to a twink" };
+function decisionButtons(it, nt) {
+  return `<div class="decide" role="group" aria-label="Decision for ${esc(it.name)}">` + DECISIONS.filter(([v]) => v).map(([v, l]) =>
+    `<button type="button" data-dec="${v}" aria-pressed="${nt.d === v}" aria-label="${l}" title="${DECISION_HINTS[v]}"><svg viewBox="0 0 18 18" aria-hidden="true">${DECISION_ICONS[v]}</svg></button>`).join("") + `</div>`;
+}
+// The dropdown under a "Twink" decision: which character the item goes to.
+function twinkSelect(id, it, nt) {
+  const best = twinkFor(id);
+  const others = Object.keys(state.db.chars).filter(k => k !== state.charKey);
+  if (nt.t && !others.includes(nt.t)) others.push(nt.t);
+  return `<select data-role="twink" aria-label="Twink for ${esc(it.name)}"><option value="">${others.length ? "Which twink?" : "No other character yet"}</option>` +
+    others.map(k => `<option value="${esc(k)}" ${k === nt.t ? "selected" : ""}>${esc(k)}${best && best.key === k ? " (" + esc(best.prof) + ")" : ""}</option>`).join("") + `</select>`;
+}
+function render() {
+  assignLegacy();
+  const active = document.activeElement;
+  if (active && active.matches && active.matches("td input[type=text]")) { state.renderPending = true; return; }
+  state.renderPending = false;
+  const c = state.db.chars[state.charKey];
+  const all = buildRows();
+
+  const stat = (id, html) => { $(id).innerHTML = html; $(id).classList.remove("hidden"); };
+  stat("s-money", `<b>${moneyHtml(c.money) || "0c"}</b>`);
+  stat("s-slots", `Bags <b>${(c.slots || 0) - (c.free || 0)}/${c.slots || 0}</b>`);
+
+  const skills = list(c.skills).filter(s => s.max && s.max > 1 && (!s.group || /beruf|profession|sekund|secondary/i.test(s.group)));
+  // In the head line: one entry per profession, its icon in place of the name. Ordered like the profession columns.
+  const profNames = (state.recipeInfo && state.recipeInfo.skills) || SKILL_NAMES;
+  const idOf = name => Object.keys(profNames).find(id => profNames[id] === name);
+  const group = s => { const id = idOf(s.name); return id in PROF_GROUP ? PROF_GROUP[id] : 2; };
+  stat("s-skills", skills.slice().sort((a, b) => group(a) - group(b) || a.name.localeCompare(b.name)).map(s => {
+    const icon = PROF_ICONS[idOf(s.name)];
+    return `<span class="skill" title="${esc(s.name)}: skill ${s.rank} of ${s.max}">${icon ? `<img src="https://wow.zamimg.com/images/wow/icons/medium/${icon}.jpg" alt="${esc(s.name)}" onerror="this.replaceWith(this.alt + ' ')">` : esc(s.name) + " "}<span><b>${s.rank}</b>/${s.max}</span></span>`;
+  }).join(""));
+  $("s-skills").classList.toggle("hidden", !skills.length);
+  $("skills").classList.toggle("hidden", SERVED);
+  $("skills").innerHTML = (SERVED ? "" : sources().map(x => `<span>${esc(x.label)}: ${x.bad ? "<b>" + esc(x.text) + "</b>" : esc(x.text)}</span>`).join(""));   // with the helper these are in Settings
+
+  $("keptcount").textContent = "(" + all.filter(r => located(r) && note(r.id).d === "forever").length + ")";
+  const views = [["all", "All"], ["quest", "Quest use"], ["prof", "Profession use"], ["nouse", "No known use"]];
+  const saved = state.view;
+  $("chips").innerHTML = views.map(([v, label]) => {
+    state.view = v;
+    const count = all.filter(r => located(r) && !keptHidden(r) && matchesView(r)).length;
+    return `<button class="chip" data-view="${v}" aria-pressed="${v === saved}">${label}<small>${count}</small></button>`;
+  }).join(" ");
+  state.view = saved;
+
+  const types = [...new Set(all.map(r => r.it.type).filter(Boolean))].sort();
+  $("typefilter").innerHTML = `<option value="">All types</option>` + types.map(t => `<option ${t === state.type ? "selected" : ""}>${esc(t)}</option>`).join("");
+  if (state.profChar && profKey() === state.charKey) state.profChar = "";      // the character shown, or one that is gone
+  $("profchar").innerHTML = Object.keys(state.db.chars).sort((a, b) => (b === state.charKey) - (a === state.charKey) || a.localeCompare(b))
+    .map(k => `<option value="${k === state.charKey ? "" : esc(k)}" ${k === profKey() ? "selected" : ""}>Professions of ${esc(k)}</option>`).join("");
+  $("profchar").classList.toggle("other", profKey() !== state.charKey);
+  $("decfilter").innerHTML = `<option value="*">Any decision</option>` + DECISIONS.map(([v, l]) => `<option value="${v}" ${v === state.dec ? "selected" : ""}>${l}</option>`).join("");
+
+  const rows = sortRows(visibleRows(all));
+  const cols = profColumns(all), info = state.recipeInfo || {};
+  document.querySelectorAll("th.prof").forEach(th => th.remove());
+  document.querySelector("th[data-sort=decision]").insertAdjacentHTML("beforebegin", cols.map(col => {
+    const english = (info.skillsEn || {})[col.id], label = col.name + (english && english !== col.name ? " / " + english : "");
+    const icon = PROF_ICONS[col.id], short = esc(col.name.slice(0, 3));
+    return `<th class="prof" data-sort="prof:${col.id}" tabindex="0" title="${esc(label)}: skill until which recipes with this item give skill-ups. Click to sort." aria-label="${esc(label)}">${icon ? `<img src="https://wow.zamimg.com/images/wow/icons/medium/${icon}.jpg" alt="${short}" onerror="this.replaceWith(this.alt)">` : short}</th>`;
+  }).join(""));
+  $("rows").innerHTML = rows.map(row => {
+    const it = row.it, nt = note(row.id);
+    const many = row.inBags + row.inBank > 1 && it.sell;
+    return `<tr data-id="${row.id}" class="d-${esc(nt.d || "none")}">
+      <td><a class="name q${it.quality == null ? 1 : it.quality}" href="${WOWHEAD}item=${row.id}" target="_blank" rel="noopener" data-wh-rename-link="false">${esc(it.name)}</a></td>
+      ${bindCell(it)}${levelCell(row)}
+      <td class="num">${gearLevel(it) || ""}</td>
+      <td>${esc(it.type || "")}<div class="sub">${esc(it.subType && it.subType !== it.type ? it.subType : "")}</div></td>
+      <td class="num">${row.inBags || ""}</td>
+      <td class="num">${row.inBank || ""}</td>
+      <td class="num">${row.worn || ""}</td>
+      <td class="num">${many ? `<span title="For all ${row.inBags + row.inBank}">${esc(money(row.value))}</span><div class="sub" title="For one">@ ${esc(money(it.sell))}</div>` : esc(money(it.sell || 0)) || '<span class="sub">no value</span>'}</td>
+      <td class="num">${auctionHtml(row, c)}</td>
+      ${questCell(row)}${cols.map(col => profCell(row, col)).join("")}
+      <td>${decisionButtons(it, nt)}${nt.d === "twink" ? twinkSelect(row.id, it, nt) : ""}</td>
+      <td><input type="text" data-role="remark" value="${esc(nt.r || "")}" placeholder="Remark" aria-label="Remark for ${esc(it.name)}"></td>
+    </tr>`;
+  }).join("") || `<tr><td colspan="${13 + cols.length}" class="none" style="padding:24px 8px">Nothing matches these filters.</td></tr>`;
+
+  document.querySelectorAll("th[data-sort]").forEach(th => {
+    th.setAttribute("aria-sort", th.dataset.sort === state.sort ? (state.dir > 0 ? "ascending" : "descending") : "none");
+  });
+  placeColTools();
+  try { if (window.$WowheadPower && window.$WowheadPower.refreshLinks) window.$WowheadPower.refreshLinks(); } catch (e) {}
+}
+
+// The dot in the head line: green = connected and updating by itself, yellow = data shown but not updating
+// (or still waiting for the game), grey = no connection. The words are in its tooltip.
+// How old the auction prices are, in days: Auctionator tells per item how long ago it last saw it, measured at
+// the sync. The freshest item stands for the last scan of the auction house. null without any price.
+function auctionAge(c) {
+  const ages = Object.values(c.items || {}).filter(it => it.auction).map(it => it.auctionAge == null ? 22 : it.auctionAge);
+  if (!ages.length) return null;
+  return Math.round(Math.min(...ages) + Math.max(0, Date.now() / 1000 - (c.updated || 0)) / 86400);    // rounded like the sync age beside it
+}
+function setStatus() {
+  const c = state.db && state.db.chars[state.charKey];
+  const live = !!state.handle || (SERVED && state.live);
+  let dot, text;
+  if (SERVED && state.helper === "down") { dot = ""; text = "The BagBoard helper cannot be reached. Nothing updates until it runs again."; }
+  else if (SERVED && state.helper === "waiting") { dot = "stale"; text = "Connected. Waiting for the first /bb sync in game."; }
+  else if (!c) { dot = ""; text = "Not connected."; }
+  else if (live) { dot = "live"; text = "Connected. New game data shows up by itself."; }
+  else { dot = "stale"; text = "Loaded once. The page does not update by itself."; }
+  // Was this character's data written by the addon that is installed now? Only the helper knows the installed build.
+  const old = !!(c && SERVED && state.addonBuild && state.addon === "installed" && c.addonBuild !== state.addonBuild);
+  if (old) text += "\nThis character's data was written by " + (c.addonBuild ? "addon version " + (c.addonVersion || "?") + " (build " + c.addonBuild + ")" : "an addon from before version numbers") +
+    ". Installed now: " + (state.addonVersion || "?") + " (build " + state.addonBuild + "). Log in with this character, /reload, then /bb sync.";
+  const days = c && c.auctionator ? auctionAge(c) : null;
+  const auction = !c || !c.auctionator ? "" : days == null ? "no auction prices" : days > 21 ? "auction over 3 weeks ago" : days < 1 ? "auction today" : "auction " + days + " d ago";
+  if (auction) text += "\nAuction prices: " + (days == null ? "none yet. Scan the auction house with Auctionator, then /bb sync."
+    : (days > 21 ? "last seen over three weeks ago" : days < 1 ? "seen today" : "last seen " + days + (days === 1 ? " day" : " days") + " ago") + " by Auctionator, as of the last sync.");
+  if (c) text += "\nGame data: " + ago(c.updated) + ".\nBank: " + (c.bankUpdated ? "seen " + ago(c.bankUpdated) : "not scanned, open it once in game") + ".";
+  $("status").innerHTML = `<span class="dot ${dot}"></span>` + (c ? ` synced ${esc(ago(c.updated))} · ${c.bankUpdated ? "bank " + esc(ago(c.bankUpdated)) : "<b>bank not scanned</b>"}${auction ? " · " + auction : ""}${old ? " · <b class=\"olddata\">older addon data</b>" : ""}` : "");
+  $("status").title = text;
+  const bad = sources().filter(x => x.bad);
+  $("settings-open").classList.toggle("problem", bad.length > 0);
+  $("settings-open").title = bad.length ? "Needs attention: " + bad.map(x => x.label + ": " + x.text).join("; ") : "Where the game and the addon's data file are, and where the board's data comes from";
+}
+
+function loadText(text) {
+  let parsed;
+  try { parsed = parseSavedVariables(text); } catch (e) { showMsg("Could not read the file: " + e.message); return; }
+  const db = parsed.BagBoardDB;
+  if (!db || !db.chars || !Object.keys(db.chars).length) { showMsg("No BagBoard data in this file yet. Log in with the addon enabled, then /bb sync."); return; }
+  showMsg("");
+  state.db = db;
+  const keys = Object.keys(db.chars);
+  if (!state.charKey) state.charKey = charFromUrl();       // a reload keeps the character that was shown
+  if (!state.charKey || !db.chars[state.charKey]) {
+    state.charKey = db.lastChar && db.chars[db.lastChar] ? db.lastChar : keys.sort((a, b) => (db.chars[b].updated || 0) - (db.chars[a].updated || 0))[0];
+  }
+  charToUrl();
+  const sel = $("char");
+  sel.innerHTML = keys.map(k => `<option value="${esc(k)}" ${k === state.charKey ? "selected" : ""}>${esc(charLabel(k))}</option>`).join("");
+  sel.classList.toggle("hidden", keys.length < 1);   // shown for a single character too: it is the only place that names it
+  $("welcome").classList.add("hidden");
+  $("app").classList.remove("hidden");
+  render();
+  setStatus();
+}
+
+// ---------- file access ----------
+const canWatch = "showOpenFilePicker" in window;
+function idb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open("bagboard", 1);
+    req.onupgradeneeded = () => req.result.createObjectStore("kv");
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function idbSet(key, value) { try { const db = await idb(); db.transaction("kv", "readwrite").objectStore("kv").put(value, key); } catch (e) {} }
+async function idbGet(key) {
+  try {
+    const db = await idb();
+    return await new Promise(resolve => { const r = db.transaction("kv").objectStore("kv").get(key); r.onsuccess = () => resolve(r.result); r.onerror = () => resolve(null); });
+  } catch (e) { return null; }
+}
+async function readHandle(force) {
+  if (!state.handle) return;
+  try {
+    const file = await state.handle.getFile();
+    if (!force && file.lastModified === state.lastModified) { setStatus(); return; }
+    state.lastModified = file.lastModified;
+    loadText(await file.text());
+  } catch (e) { /* the game is rewriting the file, or access was withdrawn: try again on the next tick */ }
+}
+async function connect() {
+  if (!canWatch) { $("filepick").click(); return; }
+  try {
+    let handle = await idbGet("handle");
+    if (handle && (await handle.queryPermission({ mode: "read" })) !== "granted") {
+      if ((await handle.requestPermission({ mode: "read" })) !== "granted") handle = null;
+    }
+    if (!handle) {
+      [handle] = await window.showOpenFilePicker({ types: [{ description: "BagBoard.lua", accept: { "text/plain": [".lua"] } }] });
+      await idbSet("handle", handle);
+    }
+    state.handle = handle;
+    $("connect").textContent = "Change file";
+    $("connect").classList.remove("primary");
+    $("connect").onclick = async () => { await idbSet("handle", null); state.handle = null; $("connect").onclick = connect; connect(); };
+    await readHandle(true);
+  } catch (e) { if (e.name !== "AbortError") showMsg("Could not open the file: " + e.message); }
+}
+function readPlainFile(file) {
+  if (!file) return;
+  file.text().then(text => { state.handle = null; loadText(text); });
+}
+
+// ---------- events ----------
+$("connect").onclick = connect;
+$("filepick").onchange = e => readPlainFile(e.target.files[0]);
+$("copy").onclick = () => navigator.clipboard && navigator.clipboard.writeText($("path").textContent).then(() => { $("copy").textContent = "Copied"; });
+$("char").onchange = e => { state.charKey = e.target.value; charToUrl(); render(); setStatus(); fetchUses(); };
+$("search").oninput = e => { state.search = e.target.value; render(); };
+$("typefilter").onchange = e => { state.type = e.target.value; render(); };
+$("decfilter").onchange = e => { state.dec = e.target.value; render(); };
+$("showworn").onchange = e => { state.showWorn = e.target.checked; render(); };
+$("showbank").onchange = e => { state.showBank = e.target.checked; render(); };
+// The columns move when the window, the table's content or the item icons change its layout.
+{
+  const watch = new ResizeObserver(placeColTools);       // the table, and each fixed column whose width pushes the others along
+  watch.observe(document.querySelector(".tablewrap table"));
+  document.querySelectorAll(".tablewrap thead th").forEach(th => watch.observe(th));
+}
+window.addEventListener("resize", placeColTools);
+document.querySelector(".tablewrap").addEventListener("scroll", placeColTools, { passive: true });      // the columns move sideways
+$("profchar").onchange = e => { state.profChar = e.target.value; render(); };
+$("showkept").onchange = e => { state.showKept = e.target.checked; render(); };
+try { state.showIndirect = localStorage.getItem(INDIRECT_KEY) !== "0"; } catch (e) {}
+$("showindirect").checked = state.showIndirect;
+$("showindirect").onchange = e => { state.showIndirect = e.target.checked; try { localStorage.setItem(INDIRECT_KEY, state.showIndirect ? "1" : "0"); } catch (err) {} render(); };
+const questFilterCount = () => { const n = state.showRep + state.showDone; $("questfilter-count").textContent = n ? " (" + n + ")" : ""; };
+document.addEventListener("click", e => { if (!e.target.closest("#questfilter")) $("questfilter").open = false; });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && $("questfilter").open) { $("questfilter").open = false; $("questfilter").querySelector("summary").focus(); } });
+$("showrep").onchange = e => { state.showRep = e.target.checked; questFilterCount(); render(); };
+$("showdone").onchange = e => { state.showDone = e.target.checked; questFilterCount(); render(); };
+$("chips").onclick = e => { const b = e.target.closest("[data-view]"); if (b) { state.view = b.dataset.view; render(); } };
+document.querySelectorAll("th[data-sort]").forEach(th => {
+  const go = () => { if (state.sort === th.dataset.sort) state.dir = -state.dir; else { state.sort = th.dataset.sort; state.dir = ["bags", "bank", "value", "auction", "uses", "quest", "bound", "minlevel", "ilvl", "worn"].includes(state.sort) ? -1 : 1; } render(); };
+  th.onclick = go;
+  th.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } };
+});
+// The profession headers are rebuilt on every render, so their sorting is handled on the header row.
+function sortByProf(e) {
+  const th = e.target.closest("th.prof[data-sort]");
+  if (!th || (e.type === "keydown" && e.key !== "Enter" && e.key !== " ")) return;
+  e.preventDefault();
+  if (state.sort === th.dataset.sort) state.dir = -state.dir; else { state.sort = th.dataset.sort; state.dir = -1; }
+  render();
+  const again = document.querySelector(`th[data-sort="${state.sort}"]`);
+  if (again && e.type === "keydown") again.focus();
+}
+$("rows").closest("table").tHead.addEventListener("click", sortByProf);
+$("rows").closest("table").tHead.addEventListener("keydown", sortByProf);
+$("rows").addEventListener("click", e => {
+  const btn = e.target.closest("button[data-dec]"), tr = btn && btn.closest("tr[data-id]");
+  if (!tr) return;
+  const id = tr.dataset.id, dec = btn.getAttribute("aria-pressed") === "true" ? "" : btn.dataset.dec;
+  // "Twink" starts with the character whose professions use the item; any other decision has no target.
+  const best = dec === "twink" ? twinkFor(id) : null;
+  setNote(id, { d: dec, t: best ? best.key : "" });
+  render();     // counts, filters and the twink dropdown follow the decision
+  const again = document.querySelector(`tr[data-id="${id}"] button[data-dec="${btn.dataset.dec}"]`);
+  if (again) again.focus();
+});
+$("rows").addEventListener("click", e => {
+  const btn = e.target.closest("button[data-prof]"), tr = btn && btn.closest("tr[data-id]");
+  if (!tr) return;
+  const row = buildRows().find(r => String(r.id) === tr.dataset.id);
+  if (row && row.profs[btn.dataset.prof]) showRecipes(row, row.profs[btn.dataset.prof]);
+});
+$("recipes-close").onclick = () => closeSheet();
+$("recipes-indirect").onchange = e => { dialogIndirect = e.target.checked; if (recipeNow) showRecipes(recipeNow.row, recipeNow.p, true); };
+$("recipes-back").onclick = () => { const last = recipeTrail.pop(); if (last) showRecipes(last.row, last.p, true); };
+// A step on in the recipe dialog: the same dialog for the made item and one profession that uses it.
+$("recipes-rows").addEventListener("click", async e => {
+  const btn = e.target.closest("button[data-step]");
+  if (!btn) return;
+  const id = btn.dataset.step, c = state.db.chars[state.charKey], known = state.made && state.made[id];
+  try {     // the made item's own recipes, and what those make
+    const res = await (await fetch("/uses?ids=" + id)).json();
+    Object.assign(state.recipeList, res.items);
+    state.made = Object.assign(state.made || {}, res.made);
+  } catch (err) {}
+  const p = profsFor(id, profSkills(), dialogIndirect)[btn.dataset.prof];
+  if (!p) return;
+  recipeTrail.push(recipeNow);
+  showRecipes({ id, it: (c.items || {})[id] || { name: known ? known.name : "Item " + id } }, p, true);
+  $("recipes-back").focus();
+});
+$("quests-close").onclick = () => closeSheet();
+$("shade").onclick = () => closeSheet();
+document.addEventListener("keydown", e => { if (e.key === "Escape" && sheet) { e.preventDefault(); closeSheet(); } });
+$("rows").addEventListener("click", e => {
+  const btn = e.target.closest("button[data-quests]"), tr = btn && btn.closest("tr[data-id]");
+  const row = tr && buildRows().find(r => String(r.id) === tr.dataset.id);
+  if (row) showQuests(row);
+});
+$("rows").addEventListener("change", e => {
+  const tr = e.target.closest("tr[data-id]");
+  if (!tr || e.target.dataset.role !== "twink") return;
+  setNote(tr.dataset.id, { t: e.target.value });
+  render();
+  const again = document.querySelector(`tr[data-id="${tr.dataset.id}"] select[data-role="twink"]`);
+  if (again) again.focus();
+});
+$("rows").addEventListener("input", e => {
+  const tr = e.target.closest("tr[data-id]");
+  if (tr && e.target.dataset.role === "remark") setNote(tr.dataset.id, { r: e.target.value });
+});
+$("rows").addEventListener("focusout", () => { if (state.renderPending) setTimeout(() => { if (state.renderPending) render(); }, 50); });
+$("install-go").onclick = installAddon;
+$("install-later").onclick = () => $("install").close();
+$("install-change").onclick = () => openSettings(true);
+$("settings-open").onclick = () => openSettings(false);
+$("set-save").onclick = saveSettings;
+$("set-cancel").onclick = () => $("settings").close();
+$("settings").addEventListener("close", () => { if (askInstallAgain) installStep = null; askInstallAgain = false; pollServer(); });
+window.addEventListener("dragover", e => { e.preventDefault(); $("drop").style.display = "block"; });
+window.addEventListener("dragleave", e => { if (!e.relatedTarget) $("drop").style.display = "none"; });
+window.addEventListener("drop", e => { e.preventDefault(); $("drop").style.display = "none"; readPlainFile(e.dataTransfer.files[0]); });
+
+loadNotes();
+setStatus();
+if (SERVED) {
+  $("connect").classList.add("hidden");
+  $("welcome").innerHTML = '<h2>Waiting for game data</h2><p>In game, click the <b>BagBoard</b> button or type <code>/bb sync</code>. This page fills in by itself a few seconds later.</p>';
+  pollServer();
+  setInterval(pollServer, 2000);
+}
+if ($("support")) $("support").textContent = "Tip: start BagBoard with \"Start BagBoard.command\" instead of opening this file directly. Then it updates by itself and Chrome's folder restriction does not apply.";
+if (!SERVED) setInterval(() => { if (state.handle) readHandle(false); else if (state.db) setStatus(); }, 2000);
+if (canWatch && !SERVED) idbGet("handle").then(async handle => {
+  if (!handle) return;
+  if ((await handle.queryPermission({ mode: "read" })) === "granted") { connect(); }
+  else { $("connect").textContent = "Reconnect file"; }
+});
+</script>
+</body>
+</html>

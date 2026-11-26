@@ -1,0 +1,13 @@
+## Interface: 16001
+## Title: BagBoard
+## Notes: Scans bags, bank, quest log and professions and saves them for the BagBoard second-screen page. Data is written on /reload or logout.
+## Notes-deDE: Scannt Taschen, Bank, Questlog und Berufe und speichert sie fuer die BagBoard-Seite auf dem zweiten Bildschirm. Gespeichert wird bei /reload oder Logout.
+## Author: Olpheer
+## Version: 0.7.0
+## Category: Bags & Inventory
+## OptionalDeps: QuestieDB, Auctionator
+## SavedVariables: BagBoardDB
+
+Notes.lua
+Build.lua
+BagBoard.lua

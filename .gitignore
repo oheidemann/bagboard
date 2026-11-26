@@ -1,0 +1,9 @@
+__pycache__/
+*.tmp
+.DS_Store
+# Personal data: notes and the lookup cache stay on this computer
+data/
+# Built releases, the updater's work folder, review notes
+dist/
+.update/
+.code-review/
