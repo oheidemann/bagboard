@@ -123,6 +123,10 @@
   .decide button:hover { color: var(--text); }
   .decide svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
   .decide button[aria-pressed=true] { color: #1a1408; }
+  /* set by the board's rules, not by the player: outlined instead of filled */
+  .decide.auto button[aria-pressed=true] { background: transparent !important; border-style: dashed; border-width: 2px; }
+  .decide.auto button[data-dec=keep][aria-pressed=true] { color: var(--good); }
+  .decide.auto button[data-dec=twink][aria-pressed=true] { color: var(--info); }
   .decide button[data-dec=keep][aria-pressed=true] { background: var(--good); border-color: var(--good); }
   .decide button[data-dec=forever][aria-pressed=true] { background: var(--muted); border-color: var(--muted); }
   .decide button[data-dec=auction][aria-pressed=true] { background: var(--gold); border-color: var(--gold); }
@@ -154,6 +158,28 @@
   dialog .hint { color: var(--muted); font-size: 12px; margin: 4px 0 0; word-break: break-all; }
   dialog .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
   #set-error { color: var(--bad); margin: 12px 0 0; }
+  #twink-rows { list-style: none; margin: 0; padding: 0; }
+  #twink-rows > li { display: flex; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); }
+  #twink-rows .rank { width: 20px; flex: none; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+  #twink-rows .updown { display: flex; flex: none; gap: 2px; }
+  #twink-rows .updown button { padding: 0 6px; color: var(--muted); }
+  #twink-rows .updown button:hover:not(:disabled) { color: var(--text); }
+  #twink-rows .updown button:disabled { opacity: .3; cursor: default; }
+  #twink-rows .prof { width: 170px; flex: none; display: flex; gap: 7px; align-items: center; }
+  #twink-rows .prof img { width: 20px; height: 20px; border-radius: 4px; }
+  #twink-rows .order { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; flex: 1; }
+  #twink-rows .who { display: inline-flex; align-items: center; gap: 3px; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 2px 3px 2px 8px; white-space: nowrap; }
+  #twink-rows .who.first { border-color: var(--info); }
+  #twink-rows .who .n { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 2px; }
+  #twink-rows .who small { color: var(--muted); margin: 0 3px; }
+  #twink-rows .who button { padding: 0 5px; border-color: transparent; background: transparent; color: var(--muted); font-size: 15px; line-height: 1.3; }
+  #twink-rows .who button:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }
+  #twink-rows .who button:disabled { opacity: .3; cursor: default; }
+  #twink-rows select { max-width: 230px; }
+  #twinks-intro { margin: 0 0 4px; }
+  #twinks-auto { color: var(--muted); margin: 0 0 12px; }
+  #twink-rows .auto { color: var(--muted); }
+  #twinks-error { color: var(--bad); margin: 12px 0 0; }
   #skills { padding: 8px 16px 0; color: var(--muted); font-size: 12.5px; display: flex; flex-wrap: wrap; gap: 4px 16px; }
   #s-skills { display: inline-flex; gap: 12px; flex-wrap: wrap; }
   #s-skills .skill { display: inline-flex; align-items: center; gap: 5px; }
@@ -174,6 +200,7 @@
   <span class="spacer"></span>
   <span class="stat" id="status" title="Not connected."><span class="dot"></span></span>
   <button id="connect" class="primary">Connect file</button>
+  <button id="twinks-open" class="hidden" title="Which profession gets an item first, and which character gets a profession's materials">Priority</button>
   <button id="settings-open" title="Where the game and the addon's data file are">Settings</button>
 </header>
 
@@ -206,6 +233,14 @@
     <tbody id="quests-rows"></tbody>
   </table></div>
   <div class="actions"><button id="quests-close" class="primary" autofocus>Close</button></div>
+</dialog>
+<dialog id="twinks" class="wide" aria-labelledby="twinks-title">
+  <h2 id="twinks-title">Priority</h2>
+  <p id="twinks-intro">When two professions can use the same item, the one higher in this list gets it. Per profession, choose the character its materials go to; with several, the first one counts and the others follow in order.</p>
+  <p id="twinks-auto">Automatic: the character whose skill gains most. Changes are saved at once.</p>
+  <ul id="twink-rows"></ul>
+  <p id="twinks-error" class="hidden" role="alert"></p>
+  <div class="actions"><button id="twinks-close" class="primary" autofocus>Close</button></div>
 </dialog>
 <dialog id="settings" aria-labelledby="settings-title">
   <h2 id="settings-title">Settings</h2>
@@ -383,7 +418,7 @@ const NOTES_KEY = "bagboard.notes.v2", NOTES_KEY_V1 = "bagboard.notes.v1";
 const WOWHEAD = "https://www.wowhead.com/forever/de/";
 const $ = id => document.getElementById(id);
 const state = { db: null, charKey: null, handle: null, lastModified: 0, sort: "type", dir: 1, view: "all",
-  search: "", type: "", dec: "*", showBank: true, showWorn: true, showDone: false, showKept: false, showRep: false, showIndirect: true, notes: { version: 2, chars: {}, legacy: {} }, notesMtime: null, renderPending: false };
+  search: "", type: "", dec: "*", showBank: true, showWorn: true, showDone: false, showKept: false, showRep: false, showIndirect: true, notes: { version: 2, chars: {}, legacy: {} }, twinks: {}, profOrder: [], reasons: {}, recs: null, notesMtime: null, renderPending: false };
 
 // Notes are per character: { version: 2, chars: { character: { itemId: { d, r } } }, legacy: { itemId: { d, r } } }.
 // "legacy" holds notes from before that; assignLegacy() hands them to the characters that carry the item.
@@ -403,6 +438,9 @@ const SERVED = location.protocol === "http:" || location.protocol === "https:";
 // The helper holds the notes. This page sends it only the single changes made here and takes over
 // its copy in return, so a page that was opened earlier cannot undo what another one saved.
 // A change is { char: character or null for a legacy note, id: itemId, and d, r or remove }.
+// A note's fields: decision, remark, twink to send to, and "a": "auto" on a decision set by the helper's rules, "off" where
+// the player cleared a recommendation. Without "a" the player decided.
+const NOTE_FIELDS = ["d", "r", "t", "a"];
 let notesTimer = null, notesFailed = false;
 let unsent = [];    // changes not sent yet
 let sending = [];   // changes in the request that is under way
@@ -410,9 +448,10 @@ function applyChanges(notes, changes) {
   for (const c of changes) {
     const bucket = c.char == null ? notes.legacy : (notes.chars[c.char] = notes.chars[c.char] || {});
     const next = c.remove ? {} : Object.assign({}, bucket[c.id]);
-    if (!c.remove) for (const f of ["d", "r", "t"]) if (f in c) next[f] = c[f];
-    for (const f of ["d", "r", "t"]) if (!next[f]) delete next[f];
-    if (!next.d && !next.r) delete bucket[c.id]; else bucket[c.id] = next;
+    if (!c.remove) for (const f of NOTE_FIELDS) if (f in c) next[f] = c[f];
+    for (const f of NOTE_FIELDS) if (!next[f]) delete next[f];
+    if (next.a === "auto" && !next.d) delete next.a;
+    if (!next.d && !next.r && !next.a) delete bucket[c.id]; else bucket[c.id] = next;
   }
 }
 // Every note of a notes object as a list of changes.
@@ -443,7 +482,7 @@ function assignLegacy() {
   change(changes);
 }
 const notesSignature = n => {
-  const bucket = b => Object.keys(b).map(k => [k, (b[k] || {}).d || "", (b[k] || {}).r || "", (b[k] || {}).t || ""]);
+  const bucket = b => Object.keys(b).map(k => [k, (b[k] || {}).d || "", (b[k] || {}).r || "", (b[k] || {}).t || "", (b[k] || {}).a || ""]);
   return JSON.stringify([bucket(n.legacy), Object.keys(n.chars).sort().filter(k => Object.keys(n.chars[k]).length).map(k => [k, bucket(n.chars[k])])]);
 };
 function adoptNotes(notes, mtime) {
@@ -506,9 +545,12 @@ async function fetchUses() {
   const ids = wantedIds();
   if (!ids.length) return;
   try {
-    const res = await (await fetch("/uses?ids=" + ids.join(","))).json();
-    state.recipeList = Object.assign(state.recipeList || {}, res.items);
-    state.made = Object.assign(state.made || {}, res.made);      // item ID -> { name, recipes }: what the recipes make, where other recipes use that
+    let res;
+    for (let i = 0; i < ids.length; i += 400) {      // in parts: the address of a request has a limit
+      res = await (await fetch("/uses?ids=" + ids.slice(i, i + 400).join(","))).json();
+      state.recipeList = Object.assign(state.recipeList || {}, res.items);
+      state.made = Object.assign(state.made || {}, res.made);      // item ID -> { name, recipes }: what the recipes make, where other recipes use that
+    }
     state.recipeInfo = res;      // pending, error, skills (profession names), version, count
     render();
     if (res.pending) usesTimer = setTimeout(fetchUses, 4000);
@@ -638,7 +680,11 @@ async function saveSettings() {
 }
 async function pollServer() {
   try {
-    const { mtime, notes, addon, addonDir, addonUpdated, addonBuild, addonVersion, app } = await (await fetch("/mtime")).json();
+    const { mtime, notes, addon, addonDir, addonUpdated, addonBuild, addonVersion, app, twinks, profOrder, recs } = await (await fetch("/mtime")).json();
+    adoptTwinks(twinks, profOrder);
+    if (recs !== state.recs) {      // the helper worked the recommendations out again: fetch why
+      try { state.reasons = await (await fetch("/reasons")).json(); state.recs = recs; if (state.db) render(); } catch (e) {}
+    }
     // BagBoard updated itself and started over: this page is the old one, so load the new one.
     if (app && state.app && app.version !== state.app.version) { location.reload(); return; }
     state.app = app || null;
@@ -676,22 +722,48 @@ function setNote(id, patch) {
 // Returns { key, prof } or null.
 const TRADE_GOOD_PROFS = { 1: ["Ingenieurskunst"], 5: ["Schneiderei"], 6: ["Lederverarbeitung"], 7: ["Schmiedekunst", "Ingenieurskunst"],
   8: ["Kochkunst"], 9: ["Alchimie"], 12: ["Verzauberkunst"] };    // trade good subclass -> profession names as the deDE game reports them
-// From the list of all recipes: the other character whose profession gets the best skill-up colour out of the
-// item at its current skill. Needs no profession window to have been opened.
+// The twinks per profession, set in the "Twinks" dialog and kept by the helper: { skill line ID: [character, ...] },
+// the first one first. twinkOrder() gives a profession's order, without characters the game data no longer has.
+function twinkOrder(skill) {
+  const chars = (state.db && state.db.chars) || {};
+  return list(state.twinks[skill]).filter(k => chars[k]);
+}
+function adoptTwinks(twinks, profOrder) {
+  if (!twinks || typeof twinks !== "object" || twinksBusy) return;
+  const order = Array.isArray(profOrder) ? profOrder : [];
+  if (JSON.stringify([twinks, order]) === JSON.stringify([state.twinks, state.profOrder])) return;
+  state.twinks = twinks;
+  state.profOrder = order;
+  if ($("twinks").open) renderTwinks();
+  if (state.db) render();
+}
+// From the list of all recipes: the other character an item goes to, and for which profession. Per profession
+// that uses the item this is its first twink (twinkOrder), whatever that character's skill; without one, the
+// character whose profession gets the best skill-up colour out of the item at its current skill. A profession
+// with a set twink wins over one without. Needs no profession window to have been opened.
 function twinkFromRecipeList(id) {
   const entry = state.recipeList && state.recipeList[id];
   const names = (state.recipeInfo && state.recipeInfo.skills) || {};
   if (!entry || !entry.recipes.length) return null;
   let best = null;
-  for (const [key, c] of Object.entries(state.db.chars)) {
-    if (key === state.charKey) continue;
-    for (const sk of list(c.skills)) {
-      const mine = entry.recipes.filter(r => names[r.skill] === sk.name);
-      if (!mine.length) continue;
-      const colours = mine.map(r => SKILL_COLOURS.indexOf(skillColour(r, sk.rank || 0)));
-      // best colour first (grey still counts: the twink can use it), then how many recipes still give skill-ups
-      const score = Math.max(...colours) * 1000 + colours.filter(x => x > 0).length + 1;
-      if (!best || score > best.score) best = { key, prof: sk.name, score };
+  const take = (key, prof, score, set) => { if (!best || score > best.score) best = { key, prof, score, set }; };
+  const rankOf = (key, name) => { const sk = list(state.db.chars[key].skills).find(s => s.name === name); return sk ? sk.rank || 0 : null; };
+  for (const skill of new Set(entry.recipes.map(r => r.skill))) {
+    const mine = entry.recipes.filter(r => r.skill === skill), name = names[skill];
+    // best colour first (grey still counts: the twink can use it), then how many recipes still give skill-ups
+    const score = rank => {
+      const colours = mine.map(r => SKILL_COLOURS.indexOf(skillColour(r, rank)));
+      return Math.max(...colours) * 1000 + colours.filter(x => x > 0).length + 1;
+    };
+    const first = twinkOrder(skill).find(k => k !== state.charKey);
+    if (first) {
+      const rank = rankOf(first, name);
+      take(first, name || "", 1e6 + (rank == null ? 0 : score(rank)), true);     // a twink without the profession yet still gets it
+      continue;
+    }
+    for (const key of Object.keys(state.db.chars)) {
+      const rank = key === state.charKey ? null : rankOf(key, name);
+      if (rank != null) take(key, name, score(rank));
     }
   }
   return best;
@@ -722,6 +794,72 @@ function twinkFor(id) {
   return best;
 }
 
+// The "Twinks" dialog: per crafting profession the ordered characters. Every change goes to the helper at once.
+let twinksBusy = false;     // a change is on its way; the helper's older copy must not undo it meanwhile
+function twinkProfs() {
+  const listed = state.recipeInfo && state.recipeInfo.skills && Object.keys(state.recipeInfo.skills).length ? state.recipeInfo.skills : null;
+  const names = listed || SKILL_NAMES;
+  const ids = new Set(Object.keys(PROF_ICONS).filter(id => names[id]));
+  // further skills with recipes that a character has, and whatever has twinks already
+  const has = new Set(Object.values(state.db.chars).flatMap(c => list(c.skills).map(s => s.name)));
+  for (const id of Object.keys(listed || {})) if (has.has(listed[id])) ids.add(id);
+  for (const id of Object.keys(state.twinks)) if (twinkOrder(id).length) ids.add(id);
+  // crafting first, then gathering (in Forever herbalism, skinning and fishing have a few recipes too), the rest, poisons
+  const group = id => ({ 1: 0, 0: 1 }[PROF_GROUP[id]] ?? (id in PROF_GROUP ? PROF_GROUP[id] : 2));
+  // The order of priority: as the player arranged them (state.profOrder), the others behind in that order.
+  const placed = id => { const i = state.profOrder.indexOf(String(id)); return i < 0 ? 1e6 : i; };
+  return [...ids].map(id => ({ id, name: names[id] || "Skill " + id })).sort((a, b) => placed(a.id) - placed(b.id) || group(a.id) - group(b.id) || a.name.localeCompare(b.name));
+}
+function renderTwinks() {
+  const chars = state.db.chars, english = (state.recipeInfo && state.recipeInfo.skillsEn) || {};
+  const rank = (key, name) => { const sk = list(chars[key].skills).find(s => s.name === name); return sk ? sk.rank || 0 : null; };
+  const profs = twinkProfs();
+  $("twink-rows").innerHTML = profs.map((p, at) => {
+    const order = twinkOrder(p.id), icon = PROF_ICONS[p.id];
+    // to add: characters with the profession first, highest skill first
+    const rest = Object.keys(chars).filter(k => !order.includes(k)).sort((a, b) => (rank(b, p.name) == null ? -1 : rank(b, p.name)) - (rank(a, p.name) == null ? -1 : rank(a, p.name)) || a.localeCompare(b));
+    const label = k => (chars[k].name || k) + (rank(k, p.name) == null ? "" : " · " + rank(k, p.name));
+    return `<li data-skill="${esc(p.id)}"><span class="rank">${at + 1}</span><span class="updown">` +
+      `<button type="button" data-prof-move="-1" aria-label="Move ${esc(p.name)} up" title="Higher priority" ${at ? "" : "disabled"}>↑</button>` +
+      `<button type="button" data-prof-move="1" aria-label="Move ${esc(p.name)} down" title="Lower priority" ${at < profs.length - 1 ? "" : "disabled"}>↓</button></span><span class="prof" title="${esc(english[p.id] && english[p.id] !== p.name ? p.name + " / " + english[p.id] : p.name)}">${icon ? `<img src="https://wow.zamimg.com/images/wow/icons/medium/${icon}.jpg" alt="">` : ""}${esc(p.name)}</span><span class="order">` +
+      order.map((k, i) => `<span class="who${i ? "" : " first"}" title="${esc(k)}${rank(k, p.name) == null ? ": does not have " + esc(p.name) + " (yet)" : ": " + esc(p.name) + " " + rank(k, p.name)}"><span class="n">${i + 1}</span>${esc(chars[k].name || k)}<small>${rank(k, p.name) == null ? "–" : rank(k, p.name)}</small>` +
+        `<button type="button" data-move="-1" data-char="${esc(k)}" aria-label="Move ${esc(k)} up for ${esc(p.name)}" title="Earlier" ${i ? "" : "disabled"}>‹</button>` +
+        `<button type="button" data-move="1" data-char="${esc(k)}" aria-label="Move ${esc(k)} down for ${esc(p.name)}" title="Later" ${i < order.length - 1 ? "" : "disabled"}>›</button>` +
+        `<button type="button" data-move="0" data-char="${esc(k)}" aria-label="Remove ${esc(k)} from ${esc(p.name)}" title="Remove">×</button></span>`).join("") +
+      (order.length ? "" : `<span class="auto">Automatic</span>`) +
+      (rest.length ? `<select aria-label="Add a character for ${esc(p.name)}"><option value="">${order.length ? "Add another" : "Choose a character"}</option>${rest.map(k => `<option value="${esc(k)}">${esc(label(k))}</option>`).join("")}</select>` : "") +
+      `</span></li>`;
+  }).join("");
+}
+// Saves a profession's characters (skill, order) or, with profOrder, the order of the professions.
+async function saveTwinks(skill, order, profOrder) {
+  const next = Object.assign({}, state.twinks);
+  // "order" comes from twinkOrder(): a character the game data no longer has drops out of a profession when it is changed
+  if (skill != null) { if (order.length) next[skill] = order; else delete next[skill]; }
+  state.twinks = next;
+  if (profOrder) state.profOrder = profOrder;
+  renderTwinks();
+  render();
+  twinksBusy = true;
+  try {
+    const r = await fetch("/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ twinks: next, profOrder: state.profOrder }) });
+    if (!r.ok) throw new Error(((await r.json()) || {}).error || "");
+    $("twinks-error").classList.add("hidden");
+  } catch (e) {
+    $("twinks-error").textContent = "Not saved. " + (e.message || "Is the BagBoard helper window still open?");
+    $("twinks-error").classList.remove("hidden");
+  }
+  twinksBusy = false;
+}
+function openTwinks() {
+  if (!state.db) return;
+  $("twinks-error").classList.add("hidden");
+  renderTwinks();
+  $("twinks").showModal();
+}
+
+// Recommendations: the helper sets Keep and Twink by itself on items the player has not decided (notes with
+// a = "auto", see apply_recommendations() in the helper). The page shows them and why (state.reasons).
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 function money(copper) {
   if (!copper) return "";
@@ -1177,9 +1315,12 @@ const DECISION_ICONS = {
   twink: `<rect x="2.5" y="4.5" width="13" height="9" rx="1.5"/><path d="M3 5.5l6 4.5 6-4.5"/>`,                             // letter
 };
 const DECISION_HINTS = { keep: "Keep for now", forever: "Keep forever (hidden from the list)", auction: "Sell at the auction house", toss: "Toss", twink: "Send to a twink" };
-function decisionButtons(it, nt) {
-  return `<div class="decide" role="group" aria-label="Decision for ${esc(it.name)}">` + DECISIONS.filter(([v]) => v).map(([v, l]) =>
-    `<button type="button" data-dec="${v}" aria-pressed="${nt.d === v}" aria-label="${l}" title="${DECISION_HINTS[v]}"><svg viewBox="0 0 18 18" aria-hidden="true">${DECISION_ICONS[v]}</svg></button>`).join("") + `</div>`;
+function decisionButtons(it, nt, id) {
+  const auto = nt.a === "auto" && nt.d;
+  const hint = v => nt.d === v && auto ? "Recommended: " + ((state.reasons[state.charKey] || {})[id] || DECISION_HINTS[v]) + ". Click to clear it, or pick another decision; the board then leaves this item alone."
+    : nt.d === v ? DECISION_HINTS[v] + ". Click to clear it and let the board recommend again." : DECISION_HINTS[v];
+  return `<div class="decide${auto ? " auto" : ""}" role="group" aria-label="Decision for ${esc(it.name)}">` + DECISIONS.filter(([v]) => v).map(([v, l]) =>
+    `<button type="button" data-dec="${v}" aria-pressed="${nt.d === v}" aria-label="${l}${nt.d === v && auto ? " (recommended)" : ""}" title="${esc(hint(v))}"><svg viewBox="0 0 18 18" aria-hidden="true">${DECISION_ICONS[v]}</svg></button>`).join("") + `</div>`;
 }
 // The dropdown under a "Twink" decision: which character the item goes to.
 function twinkSelect(id, it, nt) {
@@ -1187,7 +1328,7 @@ function twinkSelect(id, it, nt) {
   const others = Object.keys(state.db.chars).filter(k => k !== state.charKey);
   if (nt.t && !others.includes(nt.t)) others.push(nt.t);
   return `<select data-role="twink" aria-label="Twink for ${esc(it.name)}"><option value="">${others.length ? "Which twink?" : "No other character yet"}</option>` +
-    others.map(k => `<option value="${esc(k)}" ${k === nt.t ? "selected" : ""}>${esc(k)}${best && best.key === k ? " (" + esc(best.prof) + ")" : ""}</option>`).join("") + `</select>`;
+    others.map(k => `<option value="${esc(k)}" ${k === nt.t ? "selected" : ""}>${esc(k)}${best && best.key === k && best.prof ? " (" + esc(best.prof) + ")" : ""}</option>`).join("") + `</select>`;
 }
 function render() {
   assignLegacy();
@@ -1254,7 +1395,7 @@ function render() {
       <td class="num">${many ? `<span title="For all ${row.inBags + row.inBank}">${esc(money(row.value))}</span><div class="sub" title="For one">@ ${esc(money(it.sell))}</div>` : esc(money(it.sell || 0)) || '<span class="sub">no value</span>'}</td>
       <td class="num">${auctionHtml(row, c)}</td>
       ${questCell(row)}${cols.map(col => profCell(row, col)).join("")}
-      <td>${decisionButtons(it, nt)}${nt.d === "twink" ? twinkSelect(row.id, it, nt) : ""}</td>
+      <td>${decisionButtons(it, nt, row.id)}${nt.d === "twink" ? twinkSelect(row.id, it, nt) : ""}</td>
       <td><input type="text" data-role="remark" value="${esc(nt.r || "")}" placeholder="Remark" aria-label="Remark for ${esc(it.name)}"></td>
     </tr>`;
   }).join("") || `<tr><td colspan="${13 + cols.length}" class="none" style="padding:24px 8px">Nothing matches these filters.</td></tr>`;
@@ -1318,6 +1459,7 @@ function loadText(text) {
   sel.classList.toggle("hidden", keys.length < 1);   // shown for a single character too: it is the only place that names it
   $("welcome").classList.add("hidden");
   $("app").classList.remove("hidden");
+  $("twinks-open").classList.toggle("hidden", !SERVED);      // the helper keeps the twinks
   render();
   setStatus();
 }
@@ -1423,7 +1565,8 @@ $("rows").addEventListener("click", e => {
   const id = tr.dataset.id, dec = btn.getAttribute("aria-pressed") === "true" ? "" : btn.dataset.dec;
   // "Twink" starts with the character whose professions use the item; any other decision has no target.
   const best = dec === "twink" ? twinkFor(id) : null;
-  setNote(id, { d: dec, t: best ? best.key : "" });
+  // Clearing a recommendation switches it off for this item; clearing an own decision hands the item back to the rules.
+  setNote(id, { d: dec, t: best ? best.key : "", a: !dec && note(id).a === "auto" ? "off" : "" });
   render();     // counts, filters and the twink dropdown follow the decision
   const again = document.querySelector(`tr[data-id="${id}"] button[data-dec="${btn.dataset.dec}"]`);
   if (again) again.focus();
@@ -1464,7 +1607,7 @@ $("rows").addEventListener("click", e => {
 $("rows").addEventListener("change", e => {
   const tr = e.target.closest("tr[data-id]");
   if (!tr || e.target.dataset.role !== "twink") return;
-  setNote(tr.dataset.id, { t: e.target.value });
+  setNote(tr.dataset.id, { t: e.target.value, a: "" });      // a recommended twink that was changed is the player's own
   render();
   const again = document.querySelector(`tr[data-id="${tr.dataset.id}"] select[data-role="twink"]`);
   if (again) again.focus();
@@ -1478,6 +1621,34 @@ $("install-go").onclick = installAddon;
 $("install-later").onclick = () => $("install").close();
 $("install-change").onclick = () => openSettings(true);
 $("settings-open").onclick = () => openSettings(false);
+$("twinks-open").onclick = openTwinks;
+$("twinks-close").onclick = () => $("twinks").close();
+$("twink-rows").addEventListener("click", e => {
+  const btn = e.target.closest("button[data-prof-move]"), li = btn && btn.closest("li[data-skill]");
+  if (!li) return;
+  const ids = twinkProfs().map(p => String(p.id)), i = ids.indexOf(li.dataset.skill), by = +btn.dataset.profMove;
+  if (i < 0 || i + by < 0 || i + by >= ids.length) return;
+  ids.splice(i, 1);
+  ids.splice(i + by, 0, li.dataset.skill);
+  saveTwinks(null, null, ids);
+  const row = `#twink-rows li[data-skill="${li.dataset.skill}"] button[data-prof-move`;
+  (document.querySelector(`${row}="${by}"]:not(:disabled)`) || document.querySelector(`${row}]:not(:disabled)`) || $("twinks-close")).focus();
+});
+$("twink-rows").addEventListener("click", e => {
+  const btn = e.target.closest("button[data-move]"), li = btn && btn.closest("li[data-skill]");
+  if (!li) return;
+  const order = twinkOrder(li.dataset.skill), i = order.indexOf(btn.dataset.char), by = +btn.dataset.move;
+  if (i < 0) return;
+  order.splice(i, 1);
+  if (by) order.splice(i + by, 0, btn.dataset.char);
+  saveTwinks(li.dataset.skill, order);
+  const again = document.querySelector(`#twink-rows li[data-skill="${li.dataset.skill}"] button[data-move="${by}"][data-char="${CSS.escape(btn.dataset.char)}"]:not(:disabled)`);
+  (again || document.querySelector(`#twink-rows li[data-skill="${li.dataset.skill}"] button[data-char="${CSS.escape(btn.dataset.char)}"]:not(:disabled)`) || $("twinks-close")).focus();
+});
+$("twink-rows").addEventListener("change", e => {
+  const li = e.target.closest("li[data-skill]");
+  if (li && e.target.value) saveTwinks(li.dataset.skill, twinkOrder(li.dataset.skill).concat(e.target.value));
+});
 $("set-save").onclick = saveSettings;
 $("set-cancel").onclick = () => $("settings").close();
 $("settings").addEventListener("close", () => { if (askInstallAgain) installStep = null; askInstallAgain = false; pollServer(); });

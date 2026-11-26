@@ -39,15 +39,19 @@ SOURCE = os.path.join(ROOT, "addon", "BagBoard")                                
 PAGE = os.path.join(ROOT, "web", "board.html")
 DATA = os.path.join(ROOT, "data")
 NOTES = os.path.join(DATA, "bagboard-notes.json")
-CONFIG = os.path.join(DATA, "bagboard-config.json")    # locations chosen on the page
+CONFIG = os.path.join(DATA, "bagboard-config.json")    # locations and priorities chosen on the page
 # Set by apply_config():
 GAME = ""           # the game folder
 ADDON_DIR = ""      # the installed addon
 NOTES_LUA = ""      # read by the addon at login and /reload
 SAVED_FILE = ""     # the addon's data file if one was chosen, otherwise it is looked up in the game folder
+TWINKS = {}         # per profession (skill line ID) the characters its materials go to, first one first
+PROF_ORDER = []     # professions (skill line IDs), the one that wins an item first
 MAX_NOTES_BYTES = 2_000_000
 NOTES_LOCK = threading.Lock()       # one notes change at a time
-NOTE_FIELDS = ("d", "r", "t")       # decision, remark, twink to send to
+NOTE_FIELDS = ("d", "r", "t", "a")  # decision, remark, twink to send to, automatic
+# "a" is "auto" on a decision the page set by its rules (it may replace or remove that one again) and "off" on an
+# item whose recommendation the player cleared (no rule sets one again). Anything else was decided by the player.
 DECISIONS = ("keep", "forever", "auction", "toss", "twink")
 INGAME = os.path.join(DATA, "bagboard-ingame.json")     # per character, the time of the newest in-game decision taken over
 INGAME_LOCK = threading.Lock()
@@ -107,17 +111,58 @@ def load_config():
 
 
 def apply_config():
-    global GAME, ADDON_DIR, NOTES_LUA, SAVED_FILE
+    global GAME, ADDON_DIR, NOTES_LUA, SAVED_FILE, TWINKS, PROF_ORDER
     config = load_config()
     GAME = os.environ.get("BAGBOARD_WOW_DIR") or str(config.get("gameDir") or "") or GAME_DEFAULT
     ADDON_DIR = os.path.join(GAME, "Interface", "AddOns", "BagBoard")
     NOTES_LUA = os.path.join(ADDON_DIR, "Notes.lua")
     SAVED_FILE = str(config.get("savedFile") or "")
+    try:
+        TWINKS = clean_twinks(config.get("twinks") or {})
+    except ValueError:
+        TWINKS = {}
+    try:
+        PROF_ORDER = clean_prof_order(config.get("profOrder") or [])
+    except ValueError:
+        PROF_ORDER = []
 
 
 def settings_state():
     return {"gameDir": GAME, "gameDirFromEnv": bool(os.environ.get("BAGBOARD_WOW_DIR")), "savedFile": SAVED_FILE,
-            "reading": saved_file() or "", "addonDir": ADDON_DIR, "addon": addon_state()}
+            "reading": saved_file() or "", "addonDir": ADDON_DIR, "addon": addon_state(), "twinks": TWINKS,
+            "profOrder": PROF_ORDER}
+
+
+def clean_prof_order(value):
+    """The professions in the order of their priority: [skill line ID, ...]. Raises ValueError otherwise."""
+    if not isinstance(value, list) or len(value) > 200:
+        raise ValueError("The profession order must be a list.")
+    order = []
+    for skill in value:
+        if not (isinstance(skill, str) and skill.isdigit() and len(skill) <= 6):
+            raise ValueError("The profession order must hold skill line IDs.")
+        if skill not in order:
+            order.append(skill)
+    return order
+
+
+def clean_twinks(value):
+    """The twinks per profession: {skill line ID: [character, ...]}, first one first. Raises ValueError otherwise."""
+    if not isinstance(value, dict) or len(value) > 200:
+        raise ValueError("Twinks must be an object.")
+    out = {}
+    for skill, chars in value.items():
+        if not (skill.isdigit() and len(skill) <= 6 and isinstance(chars, list) and len(chars) <= 100):
+            raise ValueError("Twinks must be lists of characters per profession.")
+        order = []
+        for char in chars:
+            if not isinstance(char, str) or not char or len(char) > 100:
+                raise ValueError("A twink must be a character's name.")
+            if char not in order:
+                order.append(char)
+        if order:
+            out[skill] = order
+    return out
 
 
 def clean_path(value):
@@ -131,24 +176,32 @@ def clean_path(value):
 
 
 def save_settings(new):
-    """Stores the locations chosen on the page and switches to them. Raises ValueError on bad input."""
+    """Stores what was chosen on the page (locations, twinks) and switches to it. Only the settings that are
+    named change. Raises ValueError on bad input."""
     if not isinstance(new, dict):
         raise ValueError("Settings must be an object.")
-    game, saved = clean_path(new.get("gameDir", "")), clean_path(new.get("savedFile", ""))
-    if saved and os.path.basename(saved) != "BagBoard.lua":
-        raise ValueError("The data file must be named BagBoard.lua.")    # the helper hands this file to the page
     config = load_config()
-    config["savedFile"] = saved
-    if not os.environ.get("BAGBOARD_WOW_DIR"):
+    if "savedFile" in new:
+        saved = clean_path(new["savedFile"])
+        if saved and os.path.basename(saved) != "BagBoard.lua":
+            raise ValueError("The data file must be named BagBoard.lua.")    # the helper hands this file to the page
+        config["savedFile"] = saved
+    if "gameDir" in new and not os.environ.get("BAGBOARD_WOW_DIR"):
+        game = clean_path(new["gameDir"])
         config["gameDir"] = "" if game == GAME_DEFAULT else game
+    if "twinks" in new:
+        config["twinks"] = clean_twinks(new["twinks"])
+    if "profOrder" in new:
+        config["profOrder"] = clean_prof_order(new["profOrder"])
     os.makedirs(DATA, exist_ok=True)
     temp = CONFIG + ".tmp"
     with open(temp, "w", encoding="utf-8") as f:
         json.dump(config, f, ensure_ascii=False, indent=1)
     os.replace(temp, CONFIG)
     apply_config()
-    with NOTES_LOCK:
-        write_lua(load_notes())     # the addon in the chosen game folder, if it is installed there
+    if "savedFile" in new or "gameDir" in new:
+        with NOTES_LOCK:
+            write_lua(load_notes())     # the addon in the chosen game folder, if it is installed there
 
 
 def saved_file():
@@ -453,6 +506,7 @@ def take_ingame_edits(force=False):
                         and (d == "" or d in DECISIONS)):
                     continue
                 change = {"char": char, "id": str(item), "d": d}
+                change["a"] = "" if d else "off"    # the player decided; cleared in game means no recommendation either
                 if d != "twink":
                     change["t"] = ""        # the character to send it to belongs to "twink" only
                 changes.append((at, change))
@@ -513,7 +567,7 @@ def load_notes():
 def check_changes(changes):
     """Raises ValueError unless this is a list of changes to single notes.
 
-    A change is {"char": character or None for a legacy note, "id": item id, and "d", "r", "t" or "remove"}."""
+    A change is {"char": character or None for a legacy note, "id": item id, and "d", "r", "t", "a" or "remove"}."""
     if not isinstance(changes, list):
         raise ValueError("changes must be a list")
     for change in changes:
@@ -525,16 +579,23 @@ def check_changes(changes):
         if char is not None and not (isinstance(char, str) and 0 < len(char) <= 100):
             raise ValueError("bad character name")
         if any(not isinstance(change.get(f, ""), str) for f in NOTE_FIELDS):
-            raise ValueError("d, r and t must be text")
+            raise ValueError("d, r, t and a must be text")
+        if change.get("a", "") not in ("", "auto", "off"):
+            raise ValueError("a must be auto or off")
 
 
 def merge_notes(changes):
     """Applies changes to the notes file and the addon, in order. All other notes stay as they are.
 
     A change sets the fields it names; an empty text removes the field, "remove" removes the note.
+    "changes" may be a function that gets the notes and returns the changes; with none, nothing is written.
     Returns the notes after the change and the file's modification time."""
     with NOTES_LOCK:
         notes = read_notes()        # raises on a damaged file, so that it is never written over
+        if callable(changes):       # worked out from the notes as they are now, with nothing able to slip in between
+            changes = changes(notes)
+            if not changes:
+                return notes, notes_mtime()
         backup = os.path.splitext(NOTES)[0] + ".v1.json"
         if notes["legacy"] and not notes["chars"] and os.path.exists(NOTES) and not os.path.exists(backup):
             shutil.copy2(NOTES, backup)         # keep the notes as they were before they became per character
@@ -548,7 +609,9 @@ def merge_notes(changes):
                     note[field] = change[field]
                 if not note.get(field):
                     note.pop(field, None)
-            if note.get("d") or note.get("r"):
+            if note.get("a") == "auto" and not note.get("d"):
+                note.pop("a")
+            if note.get("d") or note.get("r") or note.get("a"):
                 bucket[item] = note
             else:
                 bucket.pop(item, None)
@@ -569,6 +632,205 @@ def notes_mtime():
         return os.path.getmtime(NOTES)
     except OSError:
         return 0
+
+
+# ---------- recommendations ----------
+# Decisions the helper sets by itself, for every character, on items the player has not decided. They are notes
+# with a = "auto". Rules, first match:
+#   1. Soulbound and quest items: none (they cannot be mailed, and the game looks after them).
+#   2. A quest in the log needs the item: keep.
+#   3. A profession's recipes use it and still give skill-ups to that profession's character: keep if that is the
+#      character that carries it, otherwise twink to it. The profession's character is the first of its set ones
+#      (TWINKS) who still gets skill-ups, one without the profession yet included; without set ones, the
+#      character with the best skill-up colour, counting only recipes within reach of its skill (REC_REACH).
+#      Not for gear, bags and consumables, which have a use of their own.
+# Between professions: the one higher in the priority (prof_order()), then set characters before automatic ones,
+# then the better colour, then the character that carries the item (no mail needed), then the number of recipes
+# that still give skill-ups. Uses one step on do not count: whoever gets the item needs the profession of the
+# step in between, and that one has a direct use.
+OWN_USE_CLASSES = (0, 1, 2, 4)      # consumable, container, weapon, armour
+# The tables do not say at which skill a recipe is learned, only where it turns yellow. Recipes are learned some
+# 5 to 35 points before that, so one whose yellow is more than this above a character's skill is out of reach.
+REC_REACH = 50
+COLOUR_WORDS = ("grey", "green", "yellow", "orange")
+PROF_GROUPS = {171: 0, 164: 0, 333: 0, 202: 0, 165: 0, 197: 0,     # crafting first
+               182: 1, 186: 1, 393: 1,                             # then gathering; everything else is 2
+               40: 3}                                              # poisons last
+RECS_LOCK = threading.Lock()
+RECS_SEEN = None        # what the recommendations were last worked out from
+RECS_COUNT = 0          # goes up whenever REASONS may have changed; the page asks for them again
+REASONS = {}            # {character: {item id: why its decision is recommended}}, for the page's tooltips
+GAME_DB = (None, None)  # (name, modification time) of the saved file and its BagBoardDB
+
+
+def game_db():
+    """The addon's data, read again only when the saved file changed. None when there is none or it is unreadable."""
+    global GAME_DB
+    name = saved_file()
+    if not name:
+        return None
+    try:
+        stamp = (name, os.path.getmtime(name))
+        if stamp != GAME_DB[0]:
+            with open(name, "r", encoding="utf-8", errors="replace") as f:
+                db = parse_saved(f.read()).get("BagBoardDB")
+            GAME_DB = (stamp, db if isinstance(db, dict) else None)
+    except (OSError, ValueError, AttributeError, RecursionError):
+        return None     # the game is writing it right now: the next look reads it
+    return GAME_DB[1]
+
+
+def prof_order():
+    """The professions by priority: as arranged on the page, then the others (crafting, gathering, the rest)."""
+    names = (RECIPES.cache.get("skills") if RECIPES else None) or {}
+    rest = sorted((s for s in names if s.isdigit() and s not in PROF_ORDER),
+                  key=lambda s: (PROF_GROUPS.get(int(s), 2), str(names[s]).lower()))
+    return PROF_ORDER + rest
+
+
+def skill_colour(recipe, rank):
+    """0 grey, 1 green, 2 yellow, 3 orange: orange below yellow, green from the midpoint, grey at the end."""
+    yellow, grey = recipe.get("yellow") or 0, recipe.get("grey") or 0
+    if rank < yellow:
+        return 3
+    if rank < yellow + (grey - yellow) // 2:
+        return 2
+    return 1 if rank < grey else 0
+
+
+def recommend(chars, me, item, it, cache, order):
+    """The decision for one item of the character "me": {"d", "t", "why"} or None."""
+    if it.get("bound"):
+        return None
+    quests = it.get("quests")
+    for q in (quests.values() if isinstance(quests, dict) else []):
+        if isinstance(q, dict) and isinstance(q.get("id"), int) and q["id"] > 0 and q.get("state") == "log":
+            return {"d": "keep", "why": "the quest %s needs it" % (q.get("name") or "in the log")}
+    if it.get("classID") in OWN_USE_CLASSES:
+        return None
+    names, groups = cache.get("skills") or {}, {}
+    for r in cache["items"].get(item) or []:
+        groups.setdefault(str(r.get("skill")), []).append(r)
+
+    def rank_of(key, name):
+        skills = chars[key].get("skills")
+        for sk in (skills.values() if isinstance(skills, dict) else []):
+            if isinstance(sk, dict) and sk.get("name") == name:
+                return sk.get("rank") or 0
+        return None
+
+    def name_of(key):
+        return chars[key].get("name") or key
+
+    found = []
+    for skill, recipes in groups.items():
+        name = names.get(skill)
+
+        def at(rank, near=False):
+            colours = [skill_colour(r, rank) for r in recipes if not near or (r.get("yellow") or 0) - REC_REACH <= rank]
+            return max(colours + [0]), len([c for c in colours if c > 0])
+
+        place = len(order) - order.index(skill) if skill in order else 0
+        tries = []      # (character, set for the profession, colour, recipes that give skill-ups)
+        chosen = [k for k in TWINKS.get(skill, []) if k in chars]
+        if chosen:
+            # the first one who still gets skill-ups, however far off: a set character collects for later
+            for key in chosen:
+                colour, useful = at(rank_of(key, name) or 0)
+                if colour > 0:
+                    tries.append((key, True, colour, useful))
+                    break
+        else:
+            for key in chars:
+                rank = rank_of(key, name)
+                colour, useful = at(rank, True) if rank is not None else (0, 0)
+                if colour > 0:
+                    tries.append((key, False, colour, useful))
+        for key, chose, colour, useful in tries:
+            score = place * 10 ** 8 + (10 ** 7 if chose else 0) + colour * 10 ** 5 + (10 ** 4 if key == me else 0) + useful
+            found.append({"score": score, "key": key, "skill": skill, "name": name or "a profession", "set": chose,
+                          "colour": colour, "useful": useful, "rank": rank_of(key, name)})
+    if not found:
+        return None
+    found.sort(key=lambda c: -c["score"])
+    best = found[0]
+    other = next((c for c in found if c["skill"] != best["skill"]), None)
+    # the profession that lost the item: named so that the player can decide otherwise
+    also = "" if not other else ". Also %s for %s on %s, lower in the priority" % (
+        COLOUR_WORDS[other["colour"]], other["name"], name_of(other["key"]))
+    gain = "%d %s of %s still %s skill-ups (best: %s%s)" % (
+        best["useful"], "recipe" if best["useful"] == 1 else "recipes", best["name"],
+        "gives" if best["useful"] == 1 else "give", COLOUR_WORDS[best["colour"]],
+        ", profession not learned yet" if best["rank"] is None else " at skill %d" % best["rank"])
+    if best["key"] == me:
+        return {"d": "keep", "t": "", "why": gain + " to this character" + also}
+    return {"d": "twink", "t": best["key"],
+            "why": gain + " to " + name_of(best["key"]) + (", the character set for it" if best["set"] else "") + also}
+
+
+def apply_recommendations():
+    """Sets, changes and removes the automatic decisions of every character, when the game data, the notes, the
+    priorities or the recipe list changed. Returns True when the notes were changed."""
+    global RECS_SEEN, RECS_COUNT, REASONS
+    with RECS_LOCK:
+        db, cache = game_db(), (RECIPES.cache if RECIPES else {})
+        chars = db.get("chars") if db else None
+        if not isinstance(chars, dict) or not isinstance(cache.get("items"), dict):
+            return False        # without the recipe list nothing is known, so nothing is taken back either
+        chars = {k: c for k, c in chars.items() if isinstance(k, str) and isinstance(c, dict)}
+
+        def seen():
+            return (GAME_DB[0], notes_mtime(), json.dumps([TWINKS, PROF_ORDER], sort_keys=True), cache.get("version"))
+
+        if seen() == RECS_SEEN:
+            return False
+        order, reasons = prof_order(), {}
+
+        def work(notes):
+            changes = []
+            for key, c in chars.items():
+                items, bucket = c.get("items"), notes["chars"].get(key) or {}
+                for item, it in (items.items() if isinstance(items, dict) else []):
+                    if not (isinstance(item, int) and isinstance(it, dict)):
+                        continue
+                    item, note = str(item), bucket.get(str(item))
+                    note = note if isinstance(note, dict) else {}
+                    if note.get("a") == "off" or (note.get("d") and note.get("a") != "auto"):
+                        continue        # the player's own
+                    rec = recommend(chars, key, item, it, cache, order)
+                    d, t = (rec["d"], rec.get("t", "")) if rec else ("", "")
+                    if rec:
+                        reasons.setdefault(key, {})[item] = rec["why"]
+                    if (note.get("d") or "") != d or (note.get("t") or "") != t:
+                        changes.append({"char": key, "id": item, "d": d, "t": t, "a": "auto" if d else ""})
+                # an automatic decision on an item the character no longer has goes; a remark on it stays
+                carried = set(str(i) for i in items) if isinstance(items, dict) else set()
+                for item, note in bucket.items():
+                    if isinstance(note, dict) and note.get("a") == "auto" and item not in carried:
+                        changes.append({"char": key, "id": item, "d": "", "t": "", "a": ""})
+            return changes
+
+        before = notes_mtime()
+        try:
+            merge_notes(work)
+        except (OSError, ValueError) as error:
+            print("Recommendations not saved: %s" % error)
+            return False
+        REASONS = reasons
+        RECS_COUNT += 1
+        RECS_SEEN = seen()
+        return notes_mtime() != before
+
+
+def watch_game():
+    """Every two seconds: decisions changed in game and the recommendations, also while no page is open."""
+    while True:
+        time.sleep(2)
+        try:
+            take_ingame_edits()
+            apply_recommendations()
+        except Exception as error:      # the thread must survive whatever a half-written file can throw
+            print("Could not follow the game data: %s" % error)
 
 
 def wago(path):
@@ -741,10 +1003,13 @@ class Handler(BaseHTTPRequestHandler):
             take_ingame_edits()             # decisions changed in game, after a /reload or logout
             self.send(200, json.dumps({"mtime": os.path.getmtime(name) if name else 0, "notes": notes_mtime(),
                                        "addon": addon_state(), "addonDir": ADDON_DIR, "addonUpdated": updated,
-                                       "addonBuild": addon_build(), "addonVersion": addon_version(),
+                                       "addonBuild": addon_build(), "addonVersion": addon_version(), "twinks": TWINKS, "profOrder": prof_order(),
+                                       "recs": RECS_COUNT,
                                        "app": {"version": app_version(), "updatedFrom": UPDATED_FROM, "started": STARTED}}))
         elif path == "/settings":
             self.send(200, json.dumps(settings_state()))
+        elif path == "/reasons":
+            self.send(200, json.dumps(REASONS, ensure_ascii=False))
         elif path == "/data":
             name = saved_file()
             if not name:
@@ -798,6 +1063,10 @@ class Handler(BaseHTTPRequestHandler):
         except OSError as e:
             self.send(500, json.dumps({"error": "Settings not saved: %s" % e}))
             return
+        try:
+            apply_recommendations()         # the priorities may have changed
+        except Exception as error:
+            print("Recommendations not worked out: %s" % error)
         self.send(200, json.dumps(settings_state()))
 
     def do_PATCH(self):
@@ -820,6 +1089,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             notes, mtime = merge_notes(changes)
+            if apply_recommendations():     # an item handed back to the rules gets its recommendation at once
+                notes, mtime = read_notes(), notes_mtime()
         except (OSError, ValueError) as e:
             self.send(500, json.dumps({"error": "Notes not saved: %s" % e}))
             return
@@ -850,6 +1121,7 @@ def main():
     global RECIPES
     RECIPES = Recipes()
     threading.Thread(target=watch_for_updates, daemon=True).start()
+    threading.Thread(target=watch_game, daemon=True).start()
     updated = update_addon()
     taken = take_ingame_edits()
     installed = write_lua(load_notes())
