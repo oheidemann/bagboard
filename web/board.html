@@ -969,6 +969,8 @@ function skillColour(r, rank) {
 // The professions that use an item, for the profession columns: directly (recipes) and, with "Indirect uses"
 // ticked, one step on (via): a recipe turns the item into something that recipes of that profession use.
 // The number and colours go by the direct recipes if there are any, otherwise by the ones a step on.
+// Without "Indirect uses" only the steps inside one profession are followed (the recipe and the one after it
+// belong to the same profession), so that its arrow for later skill-ups is always there.
 function profSkills() {     // skills of the character the profession columns are coloured for
   const skills = {};
   for (const s of list(state.db.chars[profKey()].skills)) skills[s.name] = s.rank;
@@ -984,8 +986,9 @@ function profsFor(id, mySkills, indirect = state.showIndirect) {
   };
   for (const r of (wh && wh.recipes) || []) {
     prof(r.skill).recipes.push(r);
-    const made = indirect && r.makes && String(r.makes) !== String(id) && state.made && state.made[r.makes];
+    const made = r.makes && String(r.makes) !== String(id) && state.made && state.made[r.makes];
     for (const next of (made && made.recipes) || []) {
+      if (!indirect && next.skill !== r.skill) continue;     // a step on inside the same profession always counts
       const p = prof(next.skill);
       let v = p.via.find(v => v.first === r);
       if (!v) p.via.push(v = { first: r, id: r.makes, name: made.name, recipes: [] });
