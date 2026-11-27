@@ -5,188 +5,231 @@
 <title>BagBoard</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
+  /* ---------- Colours ---------- */
   :root {
-    --bg: #14110f; --panel: #1d1916; --panel2: #262019; --line: #3a3027; --text: #e9e1d3; --muted: #9a8f7e;
-    --gold: #f0c05a; --accent: #c8963c; --good: #7ecf6a; --warn: #f0c05a; --bad: #e0685a; --info: #6fb3e0;
+    --bg: #14110f; --panel: #1d1916; --panel2: #262019; --line: #3a3027; --row-line: #2a231d; --row-hover: #1a1613;
+    --text: #e9e1d3; --muted: #9a8f7e; --gold: #f0c05a; --accent: #c8963c; --on-accent: #1a1408;
+    --good: #7ecf6a; --warn: #f0c05a; --bad: #e0685a; --info: #6fb3e0;
+    /* item quality, as in game */
     --q0: #9d9d9d; --q1: #ffffff; --q2: #1eff00; --q3: #3d9bff; --q4: #c77dff; --q5: #ff8000;
+    /* skill-up and quest difficulty: text colour and the outline that goes with it */
+    --red: #f0705f; --red-line: #e04a3a; --orange: #ff9a66; --orange-line: #ff8040;
+    --yellow: #e6da6a; --yellow-line: #d8c93c; --green: #7ecf6a; --green-line: #40bf40;
   }
+
+  /* ---------- Base ---------- */
   * { box-sizing: border-box; }
-  html, body { margin: 0; background: var(--bg); color: var(--text);
-    font: 14px/1.4 -apple-system, "Helvetica Neue", "Segoe UI", sans-serif; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 -apple-system, "Helvetica Neue", "Segoe UI", sans-serif; }
   a { color: inherit; text-decoration: none; }
   a:hover { text-decoration: underline; }
+  code { background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; font-size: 12.5px; word-break: break-all; }
+  button, select, input[type=text], input[type=search] {
+    font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+  button:focus-visible, select:focus-visible, input:focus-visible, th:focus-visible, summary:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+  label.check { color: var(--muted); display: inline-flex; gap: 5px; align-items: center; }
+  .hidden { display: none !important; }
+  .sub { color: var(--muted); font-size: 12px; }
+  .name { font-weight: 600; }
+  .q0 { color: var(--q0); } .q1 { color: var(--q1); } .q2 { color: var(--q2); }
+  .q3 { color: var(--q3); } .q4 { color: var(--q4); } .q5 { color: var(--q5); }
+  /* line icons: column headers, binding, decisions */
+  th.icon svg, td.bindcol svg, .decide svg { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* ---------- Header ---------- */
   header { position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line);
     padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
   h1 { font-size: 17px; margin: 0; color: var(--gold); letter-spacing: .02em; font-weight: 650; }
-  .stat { color: var(--muted); white-space: nowrap; }
-  img.coin { width: 13px; height: 13px; margin-left: 2px; vertical-align: -2px; }
-  .stat b { color: var(--text); font-weight: 600; }
   .spacer { flex: 1; }
-  button, select, input[type=text], input[type=search] { font: inherit; color: var(--text); background: var(--panel2);
-    border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; }
-  button { cursor: pointer; }
-  button:hover { border-color: var(--accent); }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #1a1408; font-weight: 600; }
-  button:focus-visible, select:focus-visible, input:focus-visible, th:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
-  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
-  #notice { margin: 10px 16px 0; padding: 9px 14px; background: var(--panel2); border: 1px solid var(--gold); border-radius: 8px; display: flex; gap: 14px; align-items: center; }
-  #notice.hidden { display: none; } #notice span { flex: 1; }
+  .stat { color: var(--muted); white-space: nowrap; }
+  .stat b, #skills b { color: var(--text); font-weight: 600; }
+  img.coin { width: 13px; height: 13px; margin-left: 2px; vertical-align: -2px; }
+  #s-skills { display: inline-flex; gap: 12px; flex-wrap: wrap; }
+  #s-skills .skill { display: inline-flex; align-items: center; gap: 5px; }
+  #s-skills img { width: 18px; height: 18px; border-radius: 4px; }
+  #status { cursor: help; padding: 6px; }
   #status .olddata { color: var(--warn); }
-  #status { cursor: help; padding: 6px; } #status .dot { margin-right: 6px; }
-  .dot.live { background: var(--good); } .dot.stale { background: var(--warn); }
-  #bar { padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; border-bottom: 1px solid var(--line); }
-  #bar input[type=search] { width: 220px; }
-  .chip { border-radius: 999px; padding: 4px 11px; }
-  .chip[aria-pressed=true] { background: var(--accent); border-color: var(--accent); color: #1a1408; font-weight: 600; }
-  .chip small { opacity: .75; margin-left: 4px; }
-  #questfilter { position: relative; margin-left: auto; }     /* at the right end of the bar */
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+  #status .dot { margin-right: 6px; }
+  .dot.live { background: var(--good); }
+  .dot.stale { background: var(--warn); }
+  #settings-open.problem { border-color: var(--bad); }
+  #settings-open.problem::after { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--bad); margin-left: 7px; }
+
+  /* ---------- Messages, first start, file drop ---------- */
+  #msg { color: var(--bad); padding: 6px 16px; }
+  #notice { margin: 10px 16px 0; padding: 9px 14px; background: var(--panel2); border: 1px solid var(--gold); border-radius: 8px;
+    display: flex; gap: 14px; align-items: center; }
+  #notice span { flex: 1; }
+  #welcome { max-width: 720px; margin: 40px auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 22px 26px; }
+  #welcome h2 { margin: 0 0 8px; color: var(--gold); font-size: 18px; }
+  #welcome ol { padding-left: 20px; }
+  #welcome li { margin: 8px 0; }
+  #drop { position: fixed; inset: 0; background: rgba(200, 150, 60, .18); border: 3px dashed var(--accent); display: none; z-index: 20; }
+  /* without the helper: the data sources, which the helper shows in Settings */
+  #skills { padding: 8px 16px 0; color: var(--muted); font-size: 12.5px; display: flex; flex-wrap: wrap; gap: 4px 16px; }
+
+  /* ---------- Filter bar ---------- */
   /* One row. The groups are placed over their columns by placeColTools(); on a window too narrow for that
      (class "wrapped") they simply follow each other and the bar wraps. */
-  #bar { position: relative; }
+  #bar { position: relative; padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; border-bottom: 1px solid var(--line); }
   #bar:not(.wrapped) { flex-wrap: nowrap; }
+  #bar input[type=search] { width: 220px; }
   #bar .group { display: flex; gap: 8px; align-items: center; white-space: nowrap; }
   #bar:not(.wrapped) .group { position: absolute; top: 50%; transform: translateY(-50%); left: 0; }
   #bar:not(.wrapped) #chips { white-space: nowrap; }
-  #questfilter summary { list-style: none; cursor: pointer; border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; background: var(--panel2); white-space: nowrap; }
+  .chip { border-radius: 999px; padding: 4px 11px; }
+  .chip[aria-pressed=true] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+  .chip small { opacity: .75; margin-left: 4px; }
+  #profchar.other { border-color: var(--accent); color: var(--accent); }
+  #questfilter { position: relative; margin-left: auto; }     /* at the right end of the bar */
+  #questfilter summary { list-style: none; cursor: pointer; border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px;
+    background: var(--panel2); white-space: nowrap; }
   #questfilter summary::-webkit-details-marker { display: none; }
   #questfilter summary::after { content: " ▾"; color: var(--muted); }
   #questfilter summary:hover, #questfilter[open] summary { border-color: var(--accent); }
-  #questfilter summary:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
-  #questfilter .menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: grid; gap: 8px; white-space: nowrap; box-shadow: 0 6px 20px rgba(0, 0, 0, .5); }
+  #questfilter .menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 8px; padding: 10px 12px; display: grid; gap: 8px; white-space: nowrap; box-shadow: 0 6px 20px rgba(0, 0, 0, .5); }
   #questfilter .menu label.check { color: var(--text); }
   #questfilter-count { color: var(--gold); font-weight: 600; }
-  label.check { color: var(--muted); display: inline-flex; gap: 5px; align-items: center; }
+
+  /* ---------- Tables ---------- */
   main { padding: 0 16px 60px; }
   .tablewrap { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; min-width: 980px; }
   th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em;
     padding: 10px 8px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; position: sticky; top: 0; background: var(--bg); }
-  th[data-sort] { cursor: pointer; } th[data-sort]:hover { color: var(--text); }
+  th[data-sort] { cursor: pointer; }
+  th[data-sort]:hover { color: var(--text); }
   th[aria-sort=ascending], th[aria-sort=descending] { color: var(--gold); box-shadow: inset 0 -2px var(--gold); }
-  td { padding: 7px 8px; border-bottom: 1px solid #2a231d; vertical-align: top; }
-  tr:hover td { background: #1a1613; }
+  td { padding: 7px 8px; border-bottom: 1px solid var(--row-line); vertical-align: top; }
+  tr:hover td { background: var(--row-hover); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.none { color: var(--muted); font-style: italic; font-size: 12px; padding: 24px 8px; }     /* "Nothing matches these filters." */
+
+  /* ---------- Board columns ---------- */
   th.icon { width: 1%; padding-left: 4px; }
-  th.prof, td.prof { width: 50px; min-width: 50px; max-width: 50px; box-sizing: border-box; text-align: center; padding-left: 2px; padding-right: 2px; }
-  td.prof button.profcell { width: 44px; min-width: 0; padding-left: 0; padding-right: 0; }
-  th.prof img { width: 20px; height: 20px; border-radius: 4px; vertical-align: -5px; }
-  button.profcell { font-size: 12px; padding: 2px 6px; min-width: 38px; font-variant-numeric: tabular-nums; }
+  th.icon svg { width: 17px; height: 17px; stroke: currentColor; stroke-width: 1.5; vertical-align: -4px; }
   th.icon svg.questmark { fill: #ffd100; stroke: #7a5a00; stroke-width: .8; width: 19px; height: 19px; }
   th.bindcol, td.bindcol { text-align: center; padding-left: 4px; padding-right: 4px; }
-  td.bindcol svg { width: 16px; height: 16px; fill: none; stroke: var(--gold); stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; vertical-align: -3px; }
+  td.bindcol svg { width: 16px; height: 16px; stroke: var(--gold); stroke-width: 1.2; vertical-align: -3px; }
   td.bindcol svg.later { stroke: var(--muted); stroke-dasharray: 2 2.2; }
-  td.lvl.toolow { color: #f0705f; }
-  th.questcol, td.questcol { width: 1%; text-align: center; padding-left: 3px; padding-right: 3px; }
-  button.profcell.hiddenquests { border-style: dotted; min-width: 0; }
+  td.lvl.toolow { color: var(--red); }
+  th.questcol, td.questcol { width: 1%; text-align: center; padding-left: 3px; padding-right: 3px; }     /* after th.icon: its padding counts */
+  th.prof, td.prof { width: 50px; min-width: 50px; max-width: 50px; text-align: center; padding-left: 2px; padding-right: 2px; }
+  th.prof img { width: 20px; height: 20px; border-radius: 4px; vertical-align: -5px; }
+  td select { width: 142px; }
+  td select[data-role=twink] { display: block; margin-top: 4px; }
+  tr.d-twink select { border-color: var(--info); }
+  td input[type=text] { width: 100%; min-width: 170px; }
+
+  /* ---------- Chips: quest states, skill-up colours ---------- */
+  .uses { display: flex; flex-wrap: wrap; gap: 4px; max-width: 520px; }
+  .use { font-size: 12px; padding: 2px 7px; border-radius: 5px; background: var(--panel2); border: 1px solid var(--line); white-space: nowrap; }
+  .use.log { border-color: var(--good); color: var(--good); }
+  .use.open { border-color: var(--info); color: var(--info); }
+  .use.done, .use.other { color: var(--muted); text-decoration: line-through; }
+  .use.Hard { border-color: var(--red-line); color: var(--red); }
+  .use.Optimal { border-color: var(--orange-line); color: var(--orange); }
+  .use.Medium { border-color: var(--yellow-line); color: var(--yellow); }
+  .use.Easy { border-color: var(--green-line); color: var(--green); }
+  .use.Trivial { color: var(--muted); }
+
+  /* ---------- Number buttons in the quest and profession columns ---------- */
+  button.profcell { font-size: 12px; padding: 2px 6px; min-width: 38px; font-variant-numeric: tabular-nums; }
+  td.prof button.profcell { width: 44px; min-width: 0; padding-left: 0; padding-right: 0; }
+  button.profcell.hiddenquests { min-width: 0; }
   button.profcell.unknownquest { border-style: dotted; }
-  #quests-links a, #recipes-links a { margin-right: 14px; font-size: 13px; }
   button.profcell.inlog { font-weight: 700; border-width: 2px; }
   button.profcell.struck { border-style: dashed; text-decoration: line-through; }
   button.profcell.nobody { color: var(--muted); }
-  #profchar.other { border-color: var(--accent); color: var(--accent); }
   button.profcell.indirect { background: transparent; opacity: .7; letter-spacing: -.3px; }
-  button.profcell .arrow { display: inline-block; text-decoration: none; margin-right: 1px; }
+  button.profcell .arrow { display: inline-block; text-decoration: none; margin-right: 1px; }     /* inline-block keeps the strike-through off the arrow */
   /* behind the number: a recipe one step on gives a better colour than the direct ones, shown in that colour */
   button.profcell .arrow.chain { margin: 0 0 0 1px; font-weight: 700; }
-  button.profcell .chain.Optimal { color: #ff9a66; } button.profcell .chain.Medium { color: #e6da6a; } button.profcell .chain.Easy { color: #7ecf6a; }   /* inline-block keeps the strike-through off the arrow */
-  button.use.step { cursor: pointer; display: inline-flex; align-items: center; gap: 5px; padding: 2px 7px 2px 3px; }
-  button.use.step img { width: 18px; height: 18px; border-radius: 3px; display: block; }
+  button.profcell .chain.Optimal { color: var(--orange); }
+  button.profcell .chain.Medium { color: var(--yellow); }
+  button.profcell .chain.Easy { color: var(--green); }
+
+  /* ---------- Decision buttons ---------- */
+  .decide { display: flex; gap: 4px; }
+  .decide button { width: 32px; height: 30px; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); }
+  .decide button:hover { color: var(--text); }
+  .decide button[aria-pressed=true] { color: var(--on-accent); }
+  .decide svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.5; }
+  .decide button[data-dec=keep][aria-pressed=true] { background: var(--good); border-color: var(--good); }
+  .decide button[data-dec=forever][aria-pressed=true] { background: var(--muted); border-color: var(--muted); }
+  .decide button[data-dec=auction][aria-pressed=true] { background: var(--gold); border-color: var(--gold); }
+  .decide button[data-dec=toss][aria-pressed=true] { background: var(--bad); border-color: var(--bad); }
+  .decide button[data-dec=twink][aria-pressed=true] { background: var(--info); border-color: var(--info); }
+  /* set by the board's rules, not by the player: outlined instead of filled. After the fills above, which it undoes. */
+  .decide.auto button[aria-pressed=true] { background: transparent; border-style: dashed; border-width: 2px; }
+  .decide.auto button[data-dec=keep][aria-pressed=true] { color: var(--good); }
+  .decide.auto button[data-dec=twink][aria-pressed=true] { color: var(--info); }
+
+  /* ---------- Dialogs ---------- */
+  dialog { width: 600px; max-width: calc(100vw - 40px); background: var(--panel); color: var(--text); border: 1px solid var(--gold);
+    border-radius: 10px; padding: 20px 24px; }
+  dialog::backdrop { background: rgba(0, 0, 0, .6); }
+  /* The recipe and quest dialogs are opened outside the browser's top layer, so that Wowhead's tooltips can rise above them;
+     #shade is their backdrop. */
+  dialog.wide { width: 760px; }
+  dialog.wide[open] { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); margin: 0; z-index: 1001; max-height: calc(100vh - 40px); }
+  #shade { position: fixed; inset: 0; background: rgba(0, 0, 0, .6); z-index: 1000; }
+  dialog h2 { margin: 0 0 10px; color: var(--gold); font-size: 18px; }
+  dialog h3 { margin: 16px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  dialog p { margin: 0 0 10px; }
+  dialog label { display: block; margin: 14px 0 4px; font-weight: 600; }
+  dialog input[type=text] { width: 100%; }
+  dialog .hint { color: var(--muted); font-size: 12px; margin: 4px 0 0; word-break: break-all; }
+  dialog .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+  dialog .scroll { max-height: 60vh; overflow: auto; }
+  dialog table { min-width: 0; }
+  dialog th { background: var(--panel); position: static; }
+  .links a { color: var(--info); font-size: 12px; margin-right: 8px; white-space: nowrap; }
+  #quests-links a, #recipes-links a { margin-right: 14px; font-size: 13px; }
+  #set-error, #twinks-error { color: var(--bad); margin: 12px 0 0; }
+
+  /* ---------- Recipe dialog ---------- */
   #recipes-indirect-label { margin-right: auto; align-self: center; }
   .onward a, tr.via a, a.recipelink { color: var(--info); }
   /* "used by" and the profession icons stay on one line. The line takes no width of its own, so it runs on
      past the recipe column, under the numbers, without making that column wider. */
   .onward { display: flex; flex-wrap: nowrap; align-items: center; gap: 4px; margin-top: 3px; width: 0; white-space: nowrap; }
   .onward > * { flex: none; }
+  button.use.step { cursor: pointer; display: inline-flex; align-items: center; gap: 5px; padding: 2px 7px 2px 3px; }
+  button.use.step img { width: 18px; height: 18px; border-radius: 3px; display: block; }
   tr.via td { color: var(--muted); font-size: 12px; padding-top: 14px; padding-bottom: 2px; border-bottom: 0; }
-  dialog.wide { width: 760px; }
-  dialog table { min-width: 0; } dialog th { background: var(--panel); position: static; }
-  dialog .scroll { max-height: 60vh; overflow: auto; }
-  th.icon svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; vertical-align: -4px; }
-  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .name { font-weight: 600; }
-  .q0 { color: var(--q0); } .q1 { color: var(--q1); } .q2 { color: var(--q2); } .q3 { color: var(--q3); } .q4 { color: var(--q4); } .q5 { color: var(--q5); }
-  .sub { color: var(--muted); font-size: 12px; }
-  .uses { display: flex; flex-wrap: wrap; gap: 4px; max-width: 520px; }
-  .use { font-size: 12px; padding: 2px 7px; border-radius: 5px; background: var(--panel2); border: 1px solid var(--line); white-space: nowrap; }
-  .use.log { border-color: var(--good); color: var(--good); }
-  .use.open { border-color: var(--info); color: var(--info); }
-  .use.done, .use.other { color: var(--muted); text-decoration: line-through; }
-  .use.Optimal { border-color: #ff8040; color: #ff9a66; } .use.Medium { border-color: #d8c93c; color: #e6da6a; }
-  .use.Hard { border-color: #e04a3a; color: #f0705f; }
-  .use.Easy { border-color: #40bf40; color: #7ecf6a; } .use.Trivial { color: var(--muted); }
-  .use.summary { font-weight: 600; }
-  .use.unlearned { border-style: dashed; color: var(--muted); }
-  .use.flag { color: var(--muted); }
-  .none { color: var(--muted); font-style: italic; font-size: 12px; }
-  td select { width: 142px; } td input[type=text] { width: 100%; min-width: 170px; }
-  .decide { display: flex; gap: 4px; }
-  .decide button { width: 32px; height: 30px; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); }
-  .decide button:hover { color: var(--text); }
-  .decide svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-  .decide button[aria-pressed=true] { color: #1a1408; }
-  /* set by the board's rules, not by the player: outlined instead of filled */
-  .decide.auto button[aria-pressed=true] { background: transparent !important; border-style: dashed; border-width: 2px; }
-  .decide.auto button[data-dec=keep][aria-pressed=true] { color: var(--good); }
-  .decide.auto button[data-dec=twink][aria-pressed=true] { color: var(--info); }
-  .decide button[data-dec=keep][aria-pressed=true] { background: var(--good); border-color: var(--good); }
-  .decide button[data-dec=forever][aria-pressed=true] { background: var(--muted); border-color: var(--muted); }
-  .decide button[data-dec=auction][aria-pressed=true] { background: var(--gold); border-color: var(--gold); }
-  .decide button[data-dec=toss][aria-pressed=true] { background: var(--bad); border-color: var(--bad); }
-  .decide button[data-dec=twink][aria-pressed=true] { background: var(--info); border-color: var(--info); }
-  tr.d-twink select { border-color: var(--info); }
-  td select[data-role=twink] { display: block; margin-top: 4px; }
-  .links a { color: var(--info); font-size: 12px; margin-right: 8px; white-space: nowrap; }
-  #welcome { max-width: 720px; margin: 40px auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 22px 26px; }
-  #welcome h2 { margin: 0 0 8px; color: var(--gold); font-size: 18px; }
-  #welcome ol { padding-left: 20px; } #welcome li { margin: 8px 0; }
-  code { background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; font-size: 12.5px; word-break: break-all; }
-  #msg { color: var(--bad); padding: 6px 16px; }
-  dialog { width: 600px; max-width: calc(100vw - 40px); background: var(--panel); color: var(--text); border: 1px solid var(--gold); border-radius: 10px; padding: 20px 24px; }
-  #shade { position: fixed; inset: 0; background: rgba(0, 0, 0, .6); z-index: 1000; }
-  dialog.wide[open] { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); margin: 0; z-index: 1001; max-height: calc(100vh - 40px); }
-  dialog h3 { margin: 16px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
-  #set-sources { list-style: none; margin: 0; padding: 0; }
+
+  /* ---------- Settings dialog ---------- */
+  #set-sources, #twink-rows { list-style: none; margin: 0; padding: 0; }
   #set-sources li { display: flex; gap: 12px; padding: 5px 0; border-bottom: 1px solid var(--line); }
   #set-sources li > span { width: 120px; flex: none; color: var(--muted); }
   #set-sources li.bad b { color: var(--bad); }
-  #settings-open.problem { border-color: var(--bad); }
-  #settings-open.problem::after { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--bad); margin-left: 7px; }
-  dialog::backdrop { background: rgba(0, 0, 0, .6); }
-  dialog h2 { margin: 0 0 10px; color: var(--gold); font-size: 18px; }
-  dialog p { margin: 0 0 10px; }
-  dialog label { display: block; margin: 14px 0 4px; font-weight: 600; }
-  dialog input[type=text] { width: 100%; }
-  dialog .hint { color: var(--muted); font-size: 12px; margin: 4px 0 0; word-break: break-all; }
-  dialog .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
-  #set-error { color: var(--bad); margin: 12px 0 0; }
-  #twink-rows { list-style: none; margin: 0; padding: 0; }
+
+  /* ---------- Priority dialog ---------- */
+  #twinks-intro { margin: 0 0 4px; }
+  #twinks-auto { color: var(--muted); margin: 0 0 12px; }
   #twink-rows > li { display: flex; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); }
   #twink-rows .rank { width: 20px; flex: none; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
   #twink-rows .updown { display: flex; flex: none; gap: 2px; }
   #twink-rows .updown button { padding: 0 6px; color: var(--muted); }
-  #twink-rows .updown button:hover:not(:disabled) { color: var(--text); }
-  #twink-rows .updown button:disabled { opacity: .3; cursor: default; }
   #twink-rows .prof { width: 170px; flex: none; display: flex; gap: 7px; align-items: center; }
   #twink-rows .prof img { width: 20px; height: 20px; border-radius: 4px; }
   #twink-rows .order { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; flex: 1; }
-  #twink-rows .who { display: inline-flex; align-items: center; gap: 3px; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 2px 3px 2px 8px; white-space: nowrap; }
+  #twink-rows .auto { color: var(--muted); }
+  #twink-rows select { max-width: 230px; }
+  #twink-rows .who { display: inline-flex; align-items: center; gap: 3px; background: var(--panel2); border: 1px solid var(--line);
+    border-radius: 6px; padding: 2px 3px 2px 8px; white-space: nowrap; }
   #twink-rows .who.first { border-color: var(--info); }
   #twink-rows .who .n { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 2px; }
   #twink-rows .who small { color: var(--muted); margin: 0 3px; }
   #twink-rows .who button { padding: 0 5px; border-color: transparent; background: transparent; color: var(--muted); font-size: 15px; line-height: 1.3; }
+  #twink-rows .updown button:hover:not(:disabled) { color: var(--text); }
   #twink-rows .who button:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }
-  #twink-rows .who button:disabled { opacity: .3; cursor: default; }
-  #twink-rows select { max-width: 230px; }
-  #twinks-intro { margin: 0 0 4px; }
-  #twinks-auto { color: var(--muted); margin: 0 0 12px; }
-  #twink-rows .auto { color: var(--muted); }
-  #twinks-error { color: var(--bad); margin: 12px 0 0; }
-  #skills { padding: 8px 16px 0; color: var(--muted); font-size: 12.5px; display: flex; flex-wrap: wrap; gap: 4px 16px; }
-  #s-skills { display: inline-flex; gap: 12px; flex-wrap: wrap; }
-  #s-skills .skill { display: inline-flex; align-items: center; gap: 5px; }
-  #s-skills img { width: 18px; height: 18px; border-radius: 4px; }
-  #skills b { color: var(--text); font-weight: 600; }
-  #drop { position: fixed; inset: 0; background: rgba(200,150,60,.18); border: 3px dashed var(--accent); display: none; z-index: 20; }
-  .hidden { display: none !important; }
+  #twink-rows .updown button:disabled, #twink-rows .who button:disabled { opacity: .3; cursor: default; }
 </style>
 </head>
 <body>
@@ -206,12 +249,19 @@
 
 <div id="msg" class="hidden" role="alert"></div>
 <div id="notice" class="hidden" role="status"><span id="notice-text"></span><button id="notice-ok">Got it</button></div>
+
 <dialog id="install" aria-labelledby="install-title">
   <h2 id="install-title"></h2>
   <p id="install-text"></p>
   <code id="install-path"></code>
-  <div class="actions"><button id="install-change">Change location</button><button id="install-later">Not now</button><button id="install-go" class="primary" autofocus>OK</button></div>
+  <div class="actions">
+    <button id="install-change">Change location</button>
+    <button id="install-later">Not now</button>
+    <button id="install-go" class="primary" autofocus>OK</button>
+  </div>
 </dialog>
+
+<!-- Backdrop of the recipe and quest dialogs, see openSheet(). -->
 <div id="shade" hidden></div>
 <dialog id="recipes" class="wide" aria-labelledby="recipes-title">
   <h2 id="recipes-title"></h2>
@@ -221,8 +271,13 @@
     <thead><tr><th>Recipe</th><th class="num">Needs</th><th class="num">Yellow</th><th class="num">Green</th><th class="num">Grey</th><th>For your characters</th></tr></thead>
     <tbody id="recipes-rows"></tbody>
   </table></div>
-  <div class="actions"><label class="check" id="recipes-indirect-label" title="Also list recipes one step on: what this item is made into, and who uses that. On each time the dialog opens; unticking it counts for this dialog only and does not change the board."><input type="checkbox" id="recipes-indirect"> Indirect uses</label><button id="recipes-back" hidden>Back</button><button id="recipes-close" class="primary" autofocus>Close</button></div>
+  <div class="actions">
+    <label class="check" id="recipes-indirect-label" title="Also list recipes one step on: what this item is made into, and who uses that. On each time the dialog opens; unticking it counts for this dialog only and does not change the board."><input type="checkbox" id="recipes-indirect"> Indirect uses</label>
+    <button id="recipes-back" hidden>Back</button>
+    <button id="recipes-close" class="primary" autofocus>Close</button>
+  </div>
 </dialog>
+
 <dialog id="quests" class="wide" aria-labelledby="quests-title">
   <h2 id="quests-title"></h2>
   <p class="hint" id="quests-sub"></p>
@@ -234,6 +289,7 @@
   </table></div>
   <div class="actions"><button id="quests-close" class="primary" autofocus>Close</button></div>
 </dialog>
+
 <dialog id="twinks" class="wide" aria-labelledby="twinks-title">
   <h2 id="twinks-title">Priority</h2>
   <p id="twinks-intro">When two professions can use the same item, the one higher in this list gets it. Per profession, choose the character its materials go to; with several, the first one counts and the others follow in order.</p>
@@ -242,21 +298,25 @@
   <p id="twinks-error" class="hidden" role="alert"></p>
   <div class="actions"><button id="twinks-close" class="primary" autofocus>Close</button></div>
 </dialog>
+
 <dialog id="settings" aria-labelledby="settings-title">
   <h2 id="settings-title">Settings</h2>
   <h3>Data sources</h3>
   <ul id="set-sources"></ul>
   <div id="set-locations">
-  <h3>Locations</h3>
-  <label for="set-game">WoW Forever folder</label>
-  <input type="text" id="set-game" spellcheck="false" autocomplete="off">
-  <p class="hint" id="set-game-hint"></p>
-  <label for="set-saved">Addon data file (BagBoard.lua)</label>
-  <input type="text" id="set-saved" spellcheck="false" autocomplete="off" placeholder="Automatic: the newest one in the WoW Forever folder">
-  <p class="hint" id="set-saved-hint"></p>
+    <h3>Locations</h3>
+    <label for="set-game">WoW Forever folder</label>
+    <input type="text" id="set-game" spellcheck="false" autocomplete="off">
+    <p class="hint" id="set-game-hint"></p>
+    <label for="set-saved">Addon data file (BagBoard.lua)</label>
+    <input type="text" id="set-saved" spellcheck="false" autocomplete="off" placeholder="Automatic: the newest one in the WoW Forever folder">
+    <p class="hint" id="set-saved-hint"></p>
   </div>
   <p id="set-error" class="hidden" role="alert"></p>
-  <div class="actions"><button id="set-cancel">Cancel</button><button id="set-save" class="primary">Save</button></div>
+  <div class="actions">
+    <button id="set-cancel">Cancel</button>
+    <button id="set-save" class="primary">Save</button>
+  </div>
 </dialog>
 
 <section id="welcome">
@@ -279,18 +339,18 @@
     <span id="chips"></span>
     <select id="typefilter" aria-label="Item type"></select>
     <!-- The groups below are lined up with their columns by placeColTools(). -->
-        <div class="group" id="tools-prof">
+    <div class="group" id="tools-prof">
       <select id="profchar" aria-label="Character whose professions colour the profession columns" title="The profession columns are coloured for this character's skills. Pick another character to see what they could use from these bags."></select>
       <label class="check" title="Also mark professions that use an item one step on: a recipe turns the item into something that their recipes use. Shown lighter, with an arrow."><input type="checkbox" id="showindirect" checked> Indirect uses</label>
-        </div>
-        <div class="group" id="tools-rows">
-    <label class="check"><input type="checkbox" id="showbank" checked> Bank</label>
-    <label class="check" title="Items the character is wearing"><input type="checkbox" id="showworn" checked> Equipped</label>
-        </div>
-        <div class="group" id="tools-dec">
+    </div>
+    <div class="group" id="tools-rows">
+      <label class="check"><input type="checkbox" id="showbank" checked> Bank</label>
+      <label class="check" title="Items the character is wearing"><input type="checkbox" id="showworn" checked> Equipped</label>
+    </div>
+    <div class="group" id="tools-dec">
       <label class="check" title="Items you marked Keep forever are hidden until you tick this."><input type="checkbox" id="showkept"> Kept forever <span id="keptcount"></span></label>
       <select id="decfilter" aria-label="Decision filter"></select>
-        </div>
+    </div>
     <details id="questfilter">
       <summary>Quest filter<span id="questfilter-count"></span></summary>
       <div class="menu">
@@ -1401,7 +1461,7 @@ function render() {
       <td>${decisionButtons(it, nt, row.id)}${nt.d === "twink" ? twinkSelect(row.id, it, nt) : ""}</td>
       <td><input type="text" data-role="remark" value="${esc(nt.r || "")}" placeholder="Remark" aria-label="Remark for ${esc(it.name)}"></td>
     </tr>`;
-  }).join("") || `<tr><td colspan="${13 + cols.length}" class="none" style="padding:24px 8px">Nothing matches these filters.</td></tr>`;
+  }).join("") || `<tr><td colspan="${13 + cols.length}" class="none">Nothing matches these filters.</td></tr>`;
 
   document.querySelectorAll("th[data-sort]").forEach(th => {
     th.setAttribute("aria-sort", th.dataset.sort === state.sort ? (state.dir > 0 ? "ascending" : "descending") : "none");
