@@ -52,6 +52,7 @@ that folder if you want a backup.
 - Alt+click an item to change its mark, or point at it and type `/bb keep`, `/bb forever`, `/bb auction`,
   `/bb toss`, `/bb twink` or `/bb clear`.
 - Selling a marked item to a merchant is undone and you are asked first. `/bb guard` switches that off.
+- Items marked toss are sold by themselves when you open a merchant. `/bb autosell` switches that off.
 
 ## Remove
 

@@ -65,7 +65,7 @@ RECIPE_LOCALE = "deDE"              # language of the recipe and profession name
 RECIPE_ENGLISH = "enUS"             # the English names are kept as well ("en", "skillsEn")
 RECIPE_CACHE = os.path.join(DATA, "recipe-cache.json")
 RECIPE_CHECK = 7 * 86400            # ask once a week whether there is a newer game build
-RECIPE_FORMAT = 3                   # raise this when the cache file's layout changes, to build it again
+RECIPE_FORMAT = 4                   # raise this when the cache file's layout changes, to build it again
 RECIPE_RETRY = 3600                 # after a failed download
 USER_AGENT = "BagBoard-helper"
 ALLOWED_HOSTS = {"localhost:%d" % PORT, "127.0.0.1:%d" % PORT}
@@ -639,7 +639,9 @@ def notes_mtime():
 # with a = "auto". Rules, first match:
 #   1. Soulbound and quest items: none (they cannot be mailed, and the game looks after them).
 #   2. A quest in the log needs the item: keep.
-#   3. A profession's recipes use it and still give skill-ups to that profession's character: keep if that is the
+#   3. The item itself needs a skill that only some classes can learn (the unidentified scrolls need Verständnis,
+#      a mage's skill): keep on a character of such a class, otherwise twink to one. Consumables included.
+#   4. A profession's recipes use it and still give skill-ups to that profession's character: keep if that is the
 #      character that carries it, otherwise twink to it. The profession's character is the first of its set ones
 #      (TWINKS) who still gets skill-ups, one without the profession yet included; without set ones, the
 #      character with the best skill-up colour, counting only recipes within reach of its skill (REC_REACH).
@@ -652,6 +654,9 @@ OWN_USE_CLASSES = (0, 1, 2, 4)      # consumable, container, weapon, armour
 # The tables do not say at which skill a recipe is learned, only where it turns yellow. Recipes are learned some
 # 5 to 35 points before that, so one whose yellow is more than this above a character's skill is out of reach.
 REC_REACH = 50
+# The game's classes by their bit in a class mask of the client tables (bit 0 is class 1), as the addon's classFile.
+CLASS_FILES = ("WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "DEATHKNIGHT", "SHAMAN", "MAGE", "WARLOCK", "MONK",
+               "DRUID", "DEMONHUNTER", "EVOKER")
 COLOUR_WORDS = ("grey", "green", "yellow", "orange")
 PROF_GROUPS = {171: 0, 164: 0, 333: 0, 202: 0, 165: 0, 197: 0,     # crafting first
                182: 1, 186: 1, 393: 1,                             # then gathering; everything else is 2
@@ -698,6 +703,32 @@ def skill_colour(recipe, rank):
     return 1 if rank < grey else 0
 
 
+def mask_classes(mask):
+    """The classFile names in a class mask of the client tables."""
+    return [name for bit, name in enumerate(CLASS_FILES) if mask >> bit & 1]
+
+
+def class_skill_use(chars, me, item, cache):
+    """Rule 3: the item needs a skill only some classes can learn. {"d", "t", "why"}, or None when the item needs
+    no such skill or no character has such a class."""
+    need = (cache.get("needs") or {}).get(item)
+    if not isinstance(need, dict):
+        return None
+    classes = mask_classes(need.get("classes") or 0)
+    able = [k for k in chars if chars[k].get("classFile") in classes]
+    if not able:
+        return None
+    skill = str(need.get("skill"))
+    why = "needs %s%s, a skill only %s can learn" % (
+        (cache.get("skills") or {}).get(skill) or "a skill", " %d" % need["rank"] if need.get("rank") else "",
+        " and ".join(c.capitalize() + "s" for c in classes))
+    if me in able:
+        return {"d": "keep", "t": "", "why": why}
+    # the character set for that skill in the priority first, otherwise the highest one
+    able.sort(key=lambda k: (k not in TWINKS.get(skill, []), -(chars[k].get("level") or 0)))
+    return {"d": "twink", "t": able[0], "why": "%s: %s" % (why, chars[able[0]].get("name") or able[0])}
+
+
 def recommend(chars, me, item, it, cache, order):
     """The decision for one item of the character "me": {"d", "t", "why"} or None."""
     if it.get("bound"):
@@ -706,6 +737,9 @@ def recommend(chars, me, item, it, cache, order):
     for q in (quests.values() if isinstance(quests, dict) else []):
         if isinstance(q, dict) and isinstance(q.get("id"), int) and q["id"] > 0 and q.get("state") == "log":
             return {"d": "keep", "why": "the quest %s needs it" % (q.get("name") or "in the log")}
+    by_class = class_skill_use(chars, me, item, cache)
+    if by_class:
+        return by_class
     if it.get("classID") in OWN_USE_CLASSES:
         return None
     names, groups = cache.get("skills") or {}, {}
@@ -845,8 +879,9 @@ def wago_table(name, version, locale=None):
 
 
 def build_recipes(version):
-    """Downloads six client tables once and turns them into: item id -> the recipes that use it.
-    Each recipe also names the item it makes, so that the page can follow an item one step further."""
+    """Downloads seven client tables once and turns them into: item id -> the recipes that use it.
+    Each recipe also names the item it makes, so that the page can follow an item one step further.
+    Also: the items that need a skill only some classes can learn (needs)."""
     # Categories 11 and 9 are the professions and secondary skills; class spells with reagents are left out.
     lines = {int(r["ID"]): (r["DisplayName_lang"], int(r["ParentSkillLineID"] or 0))
              for r in wago_table("SkillLine", version, RECIPE_LOCALE)
@@ -889,11 +924,31 @@ def build_recipes(version):
         raise ValueError("the tables contain no recipes")
     # Names of the made items that are materials themselves; only those can lead on to another recipe.
     onward = {item for item in makes.values() if str(item) in items}
-    made = {str(r["ID"]): r["Display_lang"] for r in wago_table("ItemSparse", version, RECIPE_LOCALE)
-            if int(r["ID"]) in onward and r["Display_lang"]}
+    sparse = list(wago_table("ItemSparse", version, RECIPE_LOCALE))
+    made = {str(r["ID"]): r["Display_lang"] for r in sparse if int(r["ID"]) in onward and r["Display_lang"]}
+    # Skills only some classes can learn: their class mask leaves out a class that other skills have.
+    masks = {}
+    for r in wago_table("SkillRaceClassInfo", version):
+        line, mask = int(r["SkillID"]), int(r["ClassMask"] or 0)
+        if line in lines:
+            masks[line] = masks.get(line, 0) | mask if mask > 0 and masks.get(line, 0) >= 0 else -1    # -1: every class
+    everyone = 0
+    for mask in masks.values():
+        everyone |= max(mask, 0)
+    needs = {}                              # item -> the class skill it needs, rank and class mask
+    for r in sparse:
+        line = int(r.get("RequiredSkill") or 0)
+        if lines.get(line, ("", 0))[1] in lines:
+            line = lines[line][1]
+        mask = masks.get(line, -1)
+        if 0 < mask != everyone:
+            needs[str(r["ID"])] = {"skill": line, "rank": int(r.get("RequiredSkillRank") or 0), "classes": mask}
+            skills.setdefault(str(line), lines[line][0])
+            skills_en.setdefault(str(line), lines_en.get(line) or lines[line][0])
     now = int(time.time())
     return {"format": RECIPE_FORMAT, "made": made, "version": version, "product": WAGO_PRODUCT, "locale": RECIPE_LOCALE, "source": WAGO,
-            "fetched": now, "checked": now, "recipes": len(seen), "skills": skills, "skillsEn": skills_en, "items": items}
+            "fetched": now, "checked": now, "recipes": len(seen), "skills": skills, "skillsEn": skills_en, "items": items,
+            "needs": needs}
 
 
 class Recipes:
@@ -916,6 +971,9 @@ class Recipes:
         with self.lock:
             cache = self.cache
             items = {str(i): {"recipes": cache["items"].get(str(i), [])} for i in ids} if cache else {}
+            for i, need in (cache.get("needs") or {}).items():
+                if i in items:      # the class skill the item itself needs, with the classes by name
+                    items[i]["needs"] = dict(need, classes=mask_classes(need.get("classes") or 0))
             # One step further: what the recipes make, where that is a material of other recipes.
             made = {}
             for i in ids if cache else []:
@@ -923,7 +981,10 @@ class Recipes:
                     m = str(r.get("makes") or "")
                     if m and m != str(i) and m not in made and m in cache["items"]:
                         made[m] = {"name": cache.get("made", {}).get(m) or r["name"], "recipes": cache["items"][m]}
-            return {"items": items, "made": made, "pending": 1 if self.loading and not cache else 0, "error": self.error,
+            bound = {}      # the skills only some classes can learn, for the Priority dialog
+            for need in (cache.get("needs") or {}).values():
+                bound[str(need.get("skill"))] = mask_classes(need.get("classes") or 0)
+            return {"classSkills": bound, "items": items, "made": made, "pending": 1 if self.loading and not cache else 0, "error": self.error,
                     "skills": cache.get("skills", {}), "skillsEn": cache.get("skillsEn", {}), "version": cache.get("version"), "count": cache.get("recipes", 0)}
 
     def save(self):

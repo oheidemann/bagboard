@@ -282,10 +282,36 @@ local link = "|cffffffff|Hitem:2589::::|h[Leinenstoff]|h|r"
 SlashCmdList["BAGBOARD"]("toss " .. link)
 local edits = BagBoardDB.edits[key]
 expect("/bb toss [link] stored", edits[2589] and edits[2589].d == "toss" and type(edits[2589].at) == "number")
-fire("MERCHANT_SHOW"); before = #BUYBACK
-sell(2589, 1)
-expect("item changed to Toss in game sells", #BUYBACK == before + 1 and #POPUPS == 0)
+-- Items marked Toss are sold when a merchant opens; /bb autosell switches that off.
+USED = nil; fire("MERCHANT_SHOW")
+expect("item changed to Toss in game is sold when the merchant opens", USED == "1/6" and BAGS[1][6] == false and BUYBACK[#BUYBACK].id == 2589 and BUYBACK[#BUYBACK].count == 20 and #POPUPS == 0)
 fire("MERCHANT_CLOSED")
+BAGS[1][6] = {2589, 20}
+SlashCmdList["BAGBOARD"]("autosell")
+USED = nil; fire("MERCHANT_SHOW")
+expect("autosell off: nothing is sold by itself", USED == nil and BAGS[1][6] ~= false)
+sell(2589, 1)
+expect("item marked Toss sells by hand without a question", BUYBACK[#BUYBACK].id == 2589 and BUYBACK[#BUYBACK].count == 1 and #POPUPS == 0)
+fire("MERCHANT_CLOSED")
+SlashCmdList["BAGBOARD"]("autosell")
+-- More stacks than one step sells, and one without a sell price, which stays.
+local keepBags = BAGS[0]
+BAGS[0] = {}
+for i = 1, 8 do BAGS[0][i] = {2589, i} end
+BAGS[0][9] = {5075, 7}
+BagBoardNotes.chars[key][5075] = { d = "toss" }
+BAGS[1][6] = false
+fire("MERCHANT_SHOW")
+local left = 0
+for i = 1, 8 do if BAGS[0][i] then left = left + 1 end end
+expect("first step sells six stacks", left == 2)
+runTimers(1)
+left = 0
+for i = 1, 8 do if BAGS[0][i] then left = left + 1 end end
+expect("second step sells the rest, the one without a price stays", left == 0 and BAGS[0][9] ~= false)
+fire("MERCHANT_CLOSED")
+BagBoardNotes.chars[key][5075] = nil
+BAGS[0] = keepBags; BAGS[1][6] = {2589, 20}
 TooltipUtil = { GetDisplayedItem = function() return "Item 4306", "|cffffffff|Hitem:4306::::|h[Item 4306]|h|r" end }
 SlashCmdList["BAGBOARD"]("clear")
 expect("/bb clear for the item under the mouse", edits[4306] and edits[4306].d == "")

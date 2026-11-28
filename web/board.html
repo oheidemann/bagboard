@@ -116,7 +116,7 @@
   th.bindcol, td.bindcol { text-align: center; padding-left: 4px; padding-right: 4px; }
   td.bindcol svg { width: 16px; height: 16px; stroke: var(--gold); stroke-width: 1.2; vertical-align: -3px; }
   td.bindcol svg.later { stroke: var(--muted); stroke-dasharray: 2 2.2; }
-  td.lvl.toolow { color: var(--red); }
+  td.lvl.toolow, .sub.cannot { color: var(--red); }
   th.questcol, td.questcol { width: 1%; text-align: center; padding-left: 3px; padding-right: 3px; }     /* after th.icon: its padding counts */
   th.prof, td.prof { width: 50px; min-width: 50px; max-width: 50px; text-align: center; padding-left: 2px; padding-right: 2px; }
   th.prof img { width: 20px; height: 20px; border-radius: 4px; vertical-align: -5px; }
@@ -217,7 +217,7 @@
   #twink-rows .updown { display: flex; flex: none; gap: 2px; }
   #twink-rows .updown button { padding: 0 6px; color: var(--muted); }
   #twink-rows .prof { width: 170px; flex: none; display: flex; gap: 7px; align-items: center; }
-  #twink-rows .prof img { width: 20px; height: 20px; border-radius: 4px; }
+  #twink-rows .prof img, #twink-rows .prof .noicon { width: 20px; height: 20px; border-radius: 4px; flex: none; }
   #twink-rows .order { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; flex: 1; }
   #twink-rows .auto { color: var(--muted); }
   #twink-rows select { max-width: 230px; }
@@ -226,6 +226,7 @@
   #twink-rows .who.first { border-color: var(--info); }
   #twink-rows .who .n { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 2px; }
   #twink-rows .who small { color: var(--muted); margin: 0 3px; }
+  #twink-rows .prof small { color: var(--muted); }
   #twink-rows .who button { padding: 0 5px; border-color: transparent; background: transparent; color: var(--muted); font-size: 15px; line-height: 1.3; }
   #twink-rows .updown button:hover:not(:disabled) { color: var(--text); }
   #twink-rows .who button:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }
@@ -828,7 +829,28 @@ function twinkFromRecipeList(id) {
   }
   return best;
 }
+// The skill an item itself needs, where only some classes can learn it (the unidentified scrolls need
+// Verständnis, a mage's skill): { skill, rank, classes, name, able }, able being the characters of such a class.
+function classSkill(id) {
+  const needs = state.recipeList && state.recipeList[id] && state.recipeList[id].needs;
+  if (!needs) return null;
+  const chars = state.db.chars, name = ((state.recipeInfo && state.recipeInfo.skills) || {})[needs.skill] || "a skill";
+  const able = Object.keys(chars).filter(k => needs.classes.includes(chars[k].classFile))
+    .sort((a, b) => twinkOrder(needs.skill).includes(b) - twinkOrder(needs.skill).includes(a) || (chars[b].level || 0) - (chars[a].level || 0));
+  return Object.assign({ name, able }, needs);
+}
+// Under the item type: "needs Verständnis 15", red on a character whose class cannot learn that skill.
+function classSkillNote(id) {
+  const n = classSkill(id);
+  if (!n) return "";
+  const mine = n.able.includes(state.charKey), others = n.able.filter(k => k !== state.charKey);
+  const only = "Only " + classWords(n.classes) + " can learn " + n.name + ".";
+  const title = only + (mine ? "" : others.length ? " Could use it: " + others.join(", ") + "." : " None of your characters can use it.");
+  return `<div class="sub${mine ? "" : " cannot"}" title="${esc(title)}">needs ${esc(n.name)}${n.rank ? " " + n.rank : ""}</div>`;
+}
 function twinkFor(id) {
+  const bound = classSkill(id), able = bound && bound.able.find(k => k !== state.charKey);
+  if (able) return { key: able, prof: bound.name, set: true };
   const fromList = twinkFromRecipeList(id);
   if (fromList) return fromList;
   // Without the recipe list (page opened without the helper): the other characters' scanned recipes.
@@ -864,29 +886,36 @@ function twinkProfs() {
   const has = new Set(Object.values(state.db.chars).flatMap(c => list(c.skills).map(s => s.name)));
   for (const id of Object.keys(listed || {})) if (has.has(listed[id])) ids.add(id);
   for (const id of Object.keys(state.twinks)) if (twinkOrder(id).length) ids.add(id);
+  for (const id of Object.keys(classSkills())) if (names[id]) ids.add(id);      // Verständnis: items need it, no recipe has to
   // crafting first, then gathering (in Forever herbalism, skinning and fishing have a few recipes too), the rest, poisons
   const group = id => ({ 1: 0, 0: 1 }[PROF_GROUP[id]] ?? (id in PROF_GROUP ? PROF_GROUP[id] : 2));
   // The order of priority: as the player arranged them (state.profOrder), the others behind in that order.
   const placed = id => { const i = state.profOrder.indexOf(String(id)); return i < 0 ? 1e6 : i; };
   return [...ids].map(id => ({ id, name: names[id] || "Skill " + id })).sort((a, b) => placed(a.id) - placed(b.id) || group(a.id) - group(b.id) || a.name.localeCompare(b.name));
 }
+// Skills only some classes can learn: { skill line ID: [classFile, ...] }, and those classes in words ("Mages").
+function classSkills() { return (state.recipeInfo && state.recipeInfo.classSkills) || {}; }
+function classWords(classes) { return classes.map(c => c[0] + c.slice(1).toLowerCase() + "s").join(" and "); }
 function renderTwinks() {
   const chars = state.db.chars, english = (state.recipeInfo && state.recipeInfo.skillsEn) || {};
   const rank = (key, name) => { const sk = list(chars[key].skills).find(s => s.name === name); return sk ? sk.rank || 0 : null; };
   const profs = twinkProfs();
   $("twink-rows").innerHTML = profs.map((p, at) => {
     const order = twinkOrder(p.id), icon = PROF_ICONS[p.id];
+    // a skill of some classes only: just their characters can be added, and the scan has no rank for it
+    const only = classSkills()[p.id], fits = k => !only || only.includes(chars[k].classFile);
+    const about = k => only ? ": " + (fits(k) ? "can learn " : "cannot learn ") + p.name : rank(k, p.name) == null ? ": does not have " + p.name + " (yet)" : ": " + p.name + " " + rank(k, p.name);
     // to add: characters with the profession first, highest skill first
-    const rest = Object.keys(chars).filter(k => !order.includes(k)).sort((a, b) => (rank(b, p.name) == null ? -1 : rank(b, p.name)) - (rank(a, p.name) == null ? -1 : rank(a, p.name)) || a.localeCompare(b));
+    const rest = Object.keys(chars).filter(k => !order.includes(k) && fits(k)).sort((a, b) => (rank(b, p.name) == null ? -1 : rank(b, p.name)) - (rank(a, p.name) == null ? -1 : rank(a, p.name)) || a.localeCompare(b));
     const label = k => (chars[k].name || k) + (rank(k, p.name) == null ? "" : " · " + rank(k, p.name));
     return `<li data-skill="${esc(p.id)}"><span class="rank">${at + 1}</span><span class="updown">` +
       `<button type="button" data-prof-move="-1" aria-label="Move ${esc(p.name)} up" title="Higher priority" ${at ? "" : "disabled"}>↑</button>` +
-      `<button type="button" data-prof-move="1" aria-label="Move ${esc(p.name)} down" title="Lower priority" ${at < profs.length - 1 ? "" : "disabled"}>↓</button></span><span class="prof" title="${esc(english[p.id] && english[p.id] !== p.name ? p.name + " / " + english[p.id] : p.name)}">${icon ? `<img src="https://wow.zamimg.com/images/wow/icons/medium/${icon}.jpg" alt="">` : ""}${esc(p.name)}</span><span class="order">` +
-      order.map((k, i) => `<span class="who${i ? "" : " first"}" title="${esc(k)}${rank(k, p.name) == null ? ": does not have " + esc(p.name) + " (yet)" : ": " + esc(p.name) + " " + rank(k, p.name)}"><span class="n">${i + 1}</span>${esc(chars[k].name || k)}<small>${rank(k, p.name) == null ? "–" : rank(k, p.name)}</small>` +
+      `<button type="button" data-prof-move="1" aria-label="Move ${esc(p.name)} down" title="Lower priority" ${at < profs.length - 1 ? "" : "disabled"}>↓</button></span><span class="prof" title="${esc(english[p.id] && english[p.id] !== p.name ? p.name + " / " + english[p.id] : p.name)}">${icon ? `<img src="https://wow.zamimg.com/images/wow/icons/medium/${icon}.jpg" alt="">` : `<span class="noicon"></span>`}${esc(p.name)}${only ? `<small>${esc(classWords(only))} only</small>` : ""}</span><span class="order">` +
+      order.map((k, i) => `<span class="who${i ? "" : " first"}" title="${esc(k + about(k))}"><span class="n">${i + 1}</span>${esc(chars[k].name || k)}<small>${only ? "" : rank(k, p.name) == null ? "–" : rank(k, p.name)}</small>` +
         `<button type="button" data-move="-1" data-char="${esc(k)}" aria-label="Move ${esc(k)} up for ${esc(p.name)}" title="Earlier" ${i ? "" : "disabled"}>‹</button>` +
         `<button type="button" data-move="1" data-char="${esc(k)}" aria-label="Move ${esc(k)} down for ${esc(p.name)}" title="Later" ${i < order.length - 1 ? "" : "disabled"}>›</button>` +
         `<button type="button" data-move="0" data-char="${esc(k)}" aria-label="Remove ${esc(k)} from ${esc(p.name)}" title="Remove">×</button></span>`).join("") +
-      (order.length ? "" : `<span class="auto">Automatic</span>`) +
+      (order.length ? "" : `<span class="auto">${only && !rest.length ? "No " + esc(classWords(only)).replace(/s\b/g, "") + " yet" : "Automatic"}</span>`) +
       (rest.length ? `<select aria-label="Add a character for ${esc(p.name)}"><option value="">${order.length ? "Add another" : "Choose a character"}</option>${rest.map(k => `<option value="${esc(k)}">${esc(label(k))}</option>`).join("")}</select>` : "") +
       `</span></li>`;
   }).join("");
@@ -1377,7 +1406,7 @@ const DECISION_ICONS = {
   toss: `<path d="M3.5 5h11M7 5V3.5h4V5M5 5l.7 10.5h6.6L13 5M7.7 8v4.5M10.3 8v4.5"/>`,                                        // bin
   twink: `<rect x="2.5" y="4.5" width="13" height="9" rx="1.5"/><path d="M3 5.5l6 4.5 6-4.5"/>`,                             // letter
 };
-const DECISION_HINTS = { keep: "Keep for now", forever: "Keep forever (hidden from the list)", auction: "Sell at the auction house", toss: "Toss", twink: "Send to a twink" };
+const DECISION_HINTS = { keep: "Keep for now", forever: "Keep forever (hidden from the list)", auction: "Sell at the auction house", toss: "Toss (sold by itself at the next merchant)", twink: "Send to a twink" };
 function decisionButtons(it, nt, id) {
   const auto = nt.a === "auto" && nt.d;
   const hint = v => nt.d === v && auto ? "Recommended: " + ((state.reasons[state.charKey] || {})[id] || DECISION_HINTS[v]) + ". Click to clear it, or pick another decision; the board then leaves this item alone."
@@ -1451,7 +1480,7 @@ function render() {
       <td><a class="name q${it.quality == null ? 1 : it.quality}" href="${WOWHEAD}item=${row.id}" target="_blank" rel="noopener" data-wh-rename-link="false">${esc(it.name)}</a></td>
       ${bindCell(it)}${levelCell(row)}
       <td class="num">${gearLevel(it) || ""}</td>
-      <td>${esc(it.type || "")}<div class="sub">${esc(it.subType && it.subType !== it.type ? it.subType : "")}</div></td>
+      <td>${esc(it.type || "")}<div class="sub">${esc(it.subType && it.subType !== it.type ? it.subType : "")}</div>${classSkillNote(row.id)}</td>
       <td class="num">${row.inBags || ""}</td>
       <td class="num">${row.inBank || ""}</td>
       <td class="num">${row.worn || ""}</td>

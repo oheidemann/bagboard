@@ -859,6 +859,81 @@ local function guardSales()
 end
 
 ---------------------------------------------------------------------------
+-- Selling what is marked Toss when a merchant window opens
+---------------------------------------------------------------------------
+
+-- Every stack in the bags whose item is marked Toss is sold, a few per step so that the game keeps up. Items
+-- without a sell price stay and are named, to be destroyed by hand. /bb autosell switches it off. The buyback
+-- list holds the last twelve sold stacks only.
+local SELL_BATCH = 6             -- stacks sold per step
+local SELL_PAUSE = 0.3           -- seconds between steps
+
+local function coins(copper)
+  local g, s, c = math.floor(copper / 10000), math.floor(copper / 100) % 100, copper % 100
+  local parts = {}
+  if g > 0 then parts[#parts + 1] = g .. "g" end
+  if s > 0 then parts[#parts + 1] = s .. "s" end
+  if c > 0 or #parts == 0 then parts[#parts + 1] = c .. "c" end
+  return table.concat(parts, " ")
+end
+
+local sellToss
+sellToss = function(run)
+  if not merchantOpen or (DB and DB.noAutoSell) then return end
+  local use = C_Container and C_Container.UseContainerItem
+  if type(use) ~= "function" then return end
+  run = run or { stacks = 0, copper = 0, priced = true, tried = {}, worthless = {}, names = {} }
+  local step, more = 0, false
+  for _, bag in ipairs(bagIDs()) do
+    for slot = 1, try(C_Container.GetContainerNumSlots, bag) or 0 do
+      local info = try(C_Container.GetContainerItemInfo, bag, slot)
+      local id = type(info) == "table" and plain(info.itemID) or nil
+      local note = id and noteFor(id)
+      local where = bag .. ":" .. slot
+      if type(note) == "table" and note.d == "toss" and not run.tried[where] and not plain(info.isLocked) then
+        local price = plain((select(11, try(C_Item and C_Item.GetItemInfo, id))))
+        local link = plain(info.hyperlink) or ("item " .. id)
+        if plain(info.hasNoValue) or price == 0 then
+          if not run.worthless[id] then
+            run.worthless[id] = true
+            run.names[#run.names + 1] = link
+          end
+        elseif step >= SELL_BATCH then
+          more = true
+        else
+          run.tried[where] = true          -- once per merchant visit, also when the sale did not work
+          step = step + 1
+          if pcall(use, bag, slot) then
+            run.stacks = run.stacks + 1
+            if type(price) == "number" then
+              run.copper = run.copper + price * (plain(info.stackCount) or 1)
+            else
+              run.priced = false
+            end
+          end
+        end
+      end
+    end
+  end
+  if more then
+    C_Timer.After(SELL_PAUSE, function() pcall(sellToss, run) end)
+    return
+  end
+  if run.stacks > 0 then
+    out("sold " .. run.stacks .. (run.stacks == 1 and " stack" or " stacks") .. " marked \"Toss\""
+      .. (run.priced and (" for " .. coins(run.copper)) or "") .. ". /bb autosell switches this off.")
+  end
+  if #run.names > 0 then
+    out("marked \"Toss\" but without a sell price, destroy by hand: " .. table.concat(run.names, ", "))
+  end
+end
+
+local function sellTossed()
+  local ok, err = pcall(sellToss)
+  if not ok and DB then DB.lastError = "selling Toss: " .. tostring(err) end
+end
+
+---------------------------------------------------------------------------
 -- /bb
 ---------------------------------------------------------------------------
 
@@ -884,6 +959,9 @@ SlashCmdList["BAGBOARD"] = function(msg)
   elseif msg == "guard" then
     DB.noSellGuard = not DB.noSellGuard or nil
     out(DB.noSellGuard and "sell guard off: every item can be sold." or "sell guard on: selling an item marked Keep, Twink or Auction is undone and asked about.")
+  elseif msg == "autosell" then
+    DB.noAutoSell = not DB.noAutoSell or nil
+    out(DB.noAutoSell and "items marked Toss are no longer sold by themselves." or "items marked Toss are sold when you open a merchant.")
   elseif msg == "show" then
     DB.hideButton = nil
     makeButton():Show()
@@ -903,6 +981,7 @@ SlashCmdList["BAGBOARD"] = function(msg)
     if changed > 0 then out(changed .. " decisions changed in game, the page gets them at the next /reload or logout.") end
     out("Alt+click an item to change its decision, or point at it and type /bb keep, forever, auction, toss, twink or clear.")
     out("sell guard for items marked Keep, Twink or Auction: " .. (DB and DB.noSellGuard and "off" or "on") .. ". /bb guard switches it.")
+    out("items marked Toss are sold when you open a merchant: " .. (DB and DB.noAutoSell and "off" or "on") .. ". /bb autosell switches it.")
     out("/bb sync saves and reloads. /bb hide or /bb show for the button.")
   end
 end
@@ -975,6 +1054,7 @@ function handlers.MERCHANT_SHOW()
   merchantOpen = true
   buyback = nil
   guardSales()                   -- remembers what is in the buyback list already
+  sellTossed()
 end
 function handlers.MERCHANT_UPDATE() guardSales() end
 function handlers.MERCHANT_CLOSED()
